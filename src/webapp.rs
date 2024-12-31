@@ -175,12 +175,11 @@ async fn download_osz(filename: web::Path<String>, req: HttpRequest) -> impl Res
 pub async fn main() -> std::io::Result<()> {
     HttpServer::new(|| {
         App::new()
-            .route("/upload", web::get().to(upload_page)) // 显示上传页面
+            .route("/", web::get().to(upload_page)) // 显示上传页面
             .route("/upload", web::post().to(upload_mcz)) // 处理文件上传
             .route("/download/{filename}", web::get().to(download_osz)) // 提供文件下载
     })
-    .bind(("0.0.0.0", 8080))?
-    .bind(("127.0.0.1", 8080))?
+    .bind(("0.0.0.0", 80))?
     .run()
     .await
 }
