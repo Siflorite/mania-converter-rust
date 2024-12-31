@@ -179,6 +179,7 @@ pub async fn main() -> std::io::Result<()> {
             .route("/upload", web::post().to(upload_mcz)) // 处理文件上传
             .route("/download/{filename}", web::get().to(download_osz)) // 提供文件下载
     })
+    .bind(("0.0.0.0", 8080))?
     .bind(("127.0.0.1", 8080))?
     .run()
     .await
