@@ -124,14 +124,14 @@ pub fn process_whole_dir_mcz() -> io::Result<()> {
         // 检查文件扩展名是否为 .mcz
         if path.extension() == Some(std::ffi::OsStr::new("mcz")) {
             // 将 .mcz 文件转换为 .osz 文件
-            process_mcz_file(path)?;
+            _ = process_mcz_file(path)?;
         }
     }
     
     Ok(())
 }
 
-pub fn process_mcz_file(path: &Path) -> io::Result<()> {
+pub fn process_mcz_file(path: &Path) -> io::Result<PathBuf> {
     // 创建解压缩后的文件夹
     let temp_dir = tempdir::TempDir::new("mcz_to_osz")?;
     let temp_dir_path = temp_dir.path();
@@ -245,8 +245,9 @@ pub fn process_mcz_file(path: &Path) -> io::Result<()> {
     
     // 完成写入
     zip_writer.finish()?;
-    
-    Ok(())
+
+    let output_file_path = path.with_extension("osz");
+    Ok(output_file_path)
 }
 
 fn add_files_to_zip(
@@ -447,7 +448,7 @@ fn convert_mc_to_osu(mc_path: &Path, mc_data: &McData) -> io::Result<()> {
                 break;
             }
             next_bpm_beat = bpm_check_list[beat_index].0;
-            time = time.floor();
+            // time = time.floor();
         }
         time += (beat - cur_bpm_beat) * cur_ms_per_beat;
         time
