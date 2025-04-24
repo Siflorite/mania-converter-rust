@@ -24,6 +24,24 @@ pub fn process_whole_dir_mcz() -> io::Result<()> {
 }
 ```
 `webapp` uses `process_mcz_file()` and sets up a web application to receive .mcz file uploads and transform it into .osz file. Just run the main function and it does all the job.
+## Using as dependency
+As you may have found, I silently added lib.rs to `/src`, meaning it can be used as a library now...
+It is very easy to use: first add it to the `[dependencies]` in your `Cargo.toml`
+```TOML
+[dependencies]
+mania-converter = {git = "https://github.com/Siflorite/mania-converter-rust"}
+# Or you can download it if you fail to fetch it through git
+# mania-converter = {path = "Path to mania-converter's Cargo.toml"}
+```
+Then you can just use it in your project:
+```Rust
+use mania_converter::mcz2osz::process_mcz_file;
+// Application
+pub fn process(file_path: &str) -> io::Result<PathBuf> {
+    let mcz_path = Path::new(&file_path).to_path_buf();
+    process_mcz_file(mcz_path)
+}
+```
 
 ## TODO
 There still remains problems of some notes converted not being on lines, with deviation of 1ms. As far as I know, this is resulted by the fact that osu used interger ms time for note timing. Since osu directly use `floor()` to all decimal note timings (while timing line can use decimals for sv use), the result between accumulating time in a loop and directly using multiplication will have a deviation caused by the precision of float. As the program currently uses the first way, it requires a great rework to put all notes on lines.
