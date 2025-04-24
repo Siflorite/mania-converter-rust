@@ -24,3 +24,7 @@ pub fn process_whole_dir_mcz() -> io::Result<()> {
 }
 ```
 `webapp` uses `process_mcz_file()` and sets up a web application to receive .mcz file uploads and transform it into .osz file. Just run the main function and it does all the job.
+
+## TODO
+There still remains problems of some notes converted not being on lines, with deviation of 1ms. As far as I know, this is resulted by the fact that osu used interger ms time for note timing. Since osu directly use `floor()` to all decimal note timings (while timing line can use decimals for sv use), the result between accumulating time in a loop and directly using multiplication will have a deviation caused by the precision of float. As the program currently uses the first way, it requires a great rework to put all notes on lines.  
+英译中：现在版本转谱有的Note不对线，因为timing都是累加再取整的，沟槽的ppy向下取整导致累加和时间*小节数会有精度差，总有一个会偏1ms，想改得完全重做mc转osu逻辑。
