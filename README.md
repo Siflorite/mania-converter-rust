@@ -25,7 +25,7 @@ pub fn process_whole_dir_mcz() -> io::Result<()> {
 ```
 `webapp` uses `process_mcz_file()` and sets up a web application to receive .mcz file uploads and transform it into .osz file. Just run the main function and it does all the job.
 ## Using as dependency
-As you may have found, I silently added lib.rs to `/src`, meaning it can be used as a library now...
+As you may have found, I silently added lib.rs to `/src`, meaning it can be used as a library now...  
 It is very easy to use: first add it to the `[dependencies]` in your `Cargo.toml`
 ```TOML
 [dependencies]
