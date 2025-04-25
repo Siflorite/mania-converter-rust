@@ -1,4 +1,5 @@
-use std::fs::{self, File};
+use std::collections::HashSet;
+use std::fs::File;
 use std::io::{self, BufReader, BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
 use std::str;
@@ -6,6 +7,7 @@ use walkdir::WalkDir;
 use zip::write::FileOptions;
 use zip::{CompressionMethod, ZipArchive, ZipWriter};
 use serde::Deserialize;
+use rayon::prelude::*;
 
 #[derive(Debug, Deserialize)]
 struct Meta {
@@ -31,14 +33,14 @@ struct ModeExt {
 #[derive(Debug, Deserialize)]
 struct Beat {
     beat: Vec<u16>,
-    bpm: f32,
+    bpm: f64,
 }
 impl Beat {
-    fn beat_to_float(&self) -> f32 {
+    fn beat_to_float(&self) -> f64 {
         // 提取数组中的元素
-        let beat_0 = self.beat[0] as f32;
-        let beat_1 = self.beat[1] as f32;
-        let beat_2 = self.beat[2] as f32;
+        let beat_0 = self.beat[0] as f64;
+        let beat_1 = self.beat[1] as f64;
+        let beat_2 = self.beat[2] as f64;
     
         // 计算结果
         let result = beat_0 + (beat_1 / beat_2);
@@ -50,14 +52,14 @@ impl Beat {
 #[derive(Debug, Deserialize)]
 struct Effect {
     beat: Vec<u16>,
-    scroll: f32,
+    scroll: f64,
 }
 impl Effect {
-    fn beat_to_float(&self) -> f32 {
+    fn beat_to_float(&self) -> f64 {
         // 提取数组中的元素
-        let beat_0 = self.beat[0] as f32;
-        let beat_1 = self.beat[1] as f32;
-        let beat_2 = self.beat[2] as f32;
+        let beat_0 = self.beat[0] as f64;
+        let beat_1 = self.beat[1] as f64;
+        let beat_2 = self.beat[2] as f64;
     
         // 计算结果
         let result = beat_0 + (beat_1 / beat_2);
@@ -77,11 +79,11 @@ struct Note {
     // r#type: Option<u8>,
 }
 impl Note {
-    fn beat_to_float(&self) -> f32 {
+    fn beat_to_float(&self) -> f64 {
         // 提取数组中的元素
-        let beat_0 = self.beat[0] as f32;
-        let beat_1 = self.beat[1] as f32;
-        let beat_2 = self.beat[2] as f32;
+        let beat_0 = self.beat[0] as f64;
+        let beat_1 = self.beat[1] as f64;
+        let beat_2 = self.beat[2] as f64;
     
         // 计算结果
         let result = beat_0 + (beat_1 / beat_2);
@@ -89,12 +91,12 @@ impl Note {
         // 返回结果
         result
     }
-    fn end_beat_to_float(&self) -> f32 {
+    fn end_beat_to_float(&self) -> f64 {
         // 提取数组中的元素
         if let Some(end_beat) = &self.endbeat{
-            let beat_0 = end_beat[0] as f32;
-            let beat_1 = end_beat[1] as f32;
-            let beat_2 = end_beat[2] as f32;
+            let beat_0 = end_beat[0] as f64;
+            let beat_1 = end_beat[1] as f64;
+            let beat_2 = end_beat[2] as f64;
         
             // 计算结果
             let result = beat_0 + (beat_1 / beat_2);
@@ -113,8 +115,10 @@ struct McData {
     note: Vec<Note>,
 }
 
-pub fn process_whole_dir_mcz() -> io::Result<()> {
-    let current_dir = "."; // 当前目录
+/// Convert all .mcz files under given dir to .osz files.  
+/// "." or "" will set dir to the Run Directory.
+pub fn process_whole_dir_mcz(dir: &str) -> io::Result<()> {
+    let current_dir = if dir == "" {"."} else {dir}; // 当前目录
     
     // 遍历当前目录下的所有文件
     for entry in WalkDir::new(current_dir) {
@@ -124,7 +128,7 @@ pub fn process_whole_dir_mcz() -> io::Result<()> {
         // 检查文件扩展名是否为 .mcz
         if path.extension() == Some(std::ffi::OsStr::new("mcz")) {
             // 将 .mcz 文件转换为 .osz 文件
-            _ = process_mcz_file(path)?;
+            let _ = process_mcz_file(path)?;
         }
     }
     
@@ -143,53 +147,38 @@ pub fn process_mcz_file(path: &Path) -> io::Result<PathBuf> {
     // 遍历 ZIP 压缩文件中的所有文件
     for i in 0..zip_archive.len() {
         let mut file = zip_archive.by_index(i)?;
+
+        // 纯文件名，不含路径
         let file_name_bytes = file.name_raw();
-        let mut final_file = String::new();
-        match str::from_utf8(file_name_bytes)
+        let translated_file_name = match str::from_utf8(file_name_bytes)
         {
             Ok(file_name) => {
-                final_file = file_name.to_string();
+                file_name.to_string()
             }
             Err(e) => {
-                println!("Failed to decode file name as UTF-8: {}", e);
+                eprintln!("Failed to decode file name as UTF-8: {}", e);
+                "invalid_utf8_name".to_string()
             }
-        }
-        // 将字符串 `s` 使用 CP437 编码器编码为字节数组
-        // match file_name.to_cp437(&CP437_CONTROL){
-        //     Ok(cow) =>{
-        //         match cow {
-        //             // 如果是借用的内容，直接返回引用
-        //             Cow::Borrowed(borrowed) => {
-        //                 let (decoded, _, _had_errors) = UTF_8.decode(borrowed);
-        //                 final_file = decoded.to_string();
-        //             },
-        //             // 如果是拥有的内容，转换为借用并返回
-        //             Cow::Owned(owned) => {
-        //                 let (decoded, _, _had_errors) = UTF_8.decode(&owned);
-        //                 final_file = decoded.to_string();
-        //             },
-        //         };
-        //     }
-        //     Err(_e) => {
-                
-        //     }
-        // }
-        // println!("{}", final_file);
-        // 将文件名中的非ASCII字符替换为下划线
-        let sanitized_file_name = sanitize_filename(&final_file);
-        let target_path = temp_dir_path.join(&sanitized_file_name);
-        // println!("{:?}", target_path);
-        // 创建目标目录（包含子文件夹）
-        if let Some(parent) = target_path.parent() {
-            fs::create_dir_all(parent)?;
-        }
+        };
+        let pure_file_name = Path::new(&translated_file_name)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap();
+
+        // 清理非法字符并生成目标路径
+        let sanitized = sanitize_filename(pure_file_name);
+        let _s = &sanitized;
+        let target_path = temp_dir_path.join(sanitized);
 
         // 将文件解压到临时目录中
         if file.is_file() {
-            let mut output_file = BufWriter::new(File::create(&target_path)?);
-            io::copy(&mut file, &mut output_file)?;
+            let mut output = File::create(&target_path)?;
+            io::copy(&mut file, &mut output)?;
         }
     }
+
+    // 在process_mcz_file中添加资源收集
+    let mut required_files = HashSet::new();
     
     // 在临时文件夹中找到 .mc 文件并转换为 .osu 文件
     for entry in WalkDir::new(temp_dir_path) {
@@ -220,7 +209,14 @@ pub fn process_mcz_file(path: &Path) -> io::Result<PathBuf> {
                     println!("Warning: Some files specified in the mc file are missing.");
                     continue;
                 }
+                if sanitized_background != "" {
+                    required_files.insert(background_path.clone());
+                }
+                if sanitized_audio != "" {
+                    required_files.insert(audio_path.clone());
+                }
             }
+            
             
             mc_data.meta.background = sanitized_background;
             if let Some(note) = mc_data.note.last() {
@@ -231,6 +227,8 @@ pub fn process_mcz_file(path: &Path) -> io::Result<PathBuf> {
             }
             // 转换 .mc 文件为 .osu 文件
             convert_mc_to_osu(&entry_path, &mc_data)?;
+            let osu_file_path = entry_path.with_extension("osu");
+            required_files.insert(osu_file_path);
         }
     }
     
@@ -241,7 +239,7 @@ pub fn process_mcz_file(path: &Path) -> io::Result<PathBuf> {
     let mut zip_writer = ZipWriter::new(osz_file);
     
     // 将临时文件夹中的文件添加到 .osz 文件中
-    add_files_to_zip(&mut zip_writer, temp_dir_path, temp_dir_path)?;
+    add_files_to_zip(&mut zip_writer, &required_files)?;
     
     // 完成写入
     zip_writer.finish()?;
@@ -252,33 +250,59 @@ pub fn process_mcz_file(path: &Path) -> io::Result<PathBuf> {
 
 fn add_files_to_zip(
     zip_writer: &mut ZipWriter<File>,
-    dir: &Path,
-    base_path: &Path,
+    files: &HashSet<PathBuf>,
 ) -> io::Result<()> {
-    // 遍历目录中的所有文件和文件夹
-    for entry in fs::read_dir(dir)? {
-        let entry = entry?;
-        let path = entry.path();
-        
-        // 获取文件相对路径
-        let rel_path = path.strip_prefix(base_path).unwrap().to_str().unwrap();
-        
-        if path.is_file() {
-            // 打开文件
-            let file = File::open(&path)?;
-            let mut file_reader = BufReader::new(file);
-            
-            // 写入 ZIP 文件
-            zip_writer.start_file(rel_path, FileOptions::default().compression_method(CompressionMethod::Stored))?;
-            io::copy(&mut file_reader, zip_writer)?;
-        } else if path.is_dir() {
-            // 递归处理子目录
-            add_files_to_zip(zip_writer, &path, base_path)?;
-        }
-    }
+    let sorted_files: Vec<_> = files.iter().collect();
     
+    for path in sorted_files {
+        let file_name = path.file_name()
+            .and_then(|n| n.to_str())
+            .ok_or_else(|| io::Error::new(
+                io::ErrorKind::InvalidInput, 
+                "Invalid file name"
+            ))?;
+        
+        let mut file = File::open(path)?;
+        zip_writer.start_file(
+            file_name,
+            FileOptions::default()
+                .compression_method(CompressionMethod::Stored)
+        )?;
+        io::copy(&mut file, zip_writer)?;
+    }
     Ok(())
 }
+
+// Old function, adds everything to the zip, deprecated
+// fn add_files_to_zip(
+//     zip_writer: &mut ZipWriter<File>,
+//     dir: &Path,
+//     base_path: &Path,
+// ) -> io::Result<()> {
+//     // 遍历目录中的所有文件和文件夹
+//     for entry in fs::read_dir(dir)? {
+//         let entry = entry?;
+//         let path = entry.path();
+        
+//         // 获取文件相对路径
+//         let rel_path = path.strip_prefix(base_path).unwrap().to_str().unwrap();
+        
+//         if path.is_file() {
+//             // 打开文件
+//             let file = File::open(&path)?;
+//             let mut file_reader = BufReader::new(file);
+            
+//             // 写入 ZIP 文件
+//             zip_writer.start_file(rel_path, FileOptions::default().compression_method(CompressionMethod::Stored))?;
+//             io::copy(&mut file_reader, zip_writer)?;
+//         } else if path.is_dir() {
+//             // 递归处理子目录
+//             add_files_to_zip(zip_writer, &path, base_path)?;
+//         }
+//     }
+    
+//     Ok(())
+// }
 
 fn convert_mc_to_osu(mc_path: &Path, mc_data: &McData) -> io::Result<()> {
     // 打印解析后的数据
@@ -298,219 +322,191 @@ fn convert_mc_to_osu(mc_path: &Path, mc_data: &McData) -> io::Result<()> {
         }
     }
 
-    // 您可以继续根据解析后的数据进行其他操作
-    // 构建 General 部分
-    let mut osu_file_content = String::new();
-    osu_file_content.push_str("osu file format v14\n\n[General]\n");
-    osu_file_content.push_str(&format!("AudioFilename: {}\n", audio));
-    osu_file_content.push_str(&format!("AudioLeadIn: 0\nPreviewTime: {}\nCountdown: 0\nSampleSet: Soft\n", &mc_data.meta.preview.unwrap_or(0)));
-    osu_file_content.push_str("StackLeniency: 0.7\nMode: 3\nLetterboxInBreaks: 0\nSpecialStyle: 0\nWidescreenStoryboard: 1\n\n");
-
-    // 构建 Editor 部分
-    osu_file_content.push_str("[Editor]\nDistanceSpacing: 1\nBeatDivisor: 8\nGridSize: 4\nTimelineZoom: 2\n\n");
-
-    // 构建 Metadata 部分
-    osu_file_content.push_str("[Metadata]\n");
-    osu_file_content.push_str(&format!("Title:{}\n", mc_data.meta.song.titleorg.as_deref().unwrap_or(&mc_data.meta.song.title)));
-    osu_file_content.push_str(&format!("TitleUnicode:{}\n", mc_data.meta.song.title));
-    osu_file_content.push_str(&format!("Artist:{}\n", mc_data.meta.song.artistorg.as_deref().unwrap_or(&mc_data.meta.song.artist)));
-    osu_file_content.push_str(&format!("ArtistUnicode:{}\n", mc_data.meta.song.artist));
-    osu_file_content.push_str(&format!("Creator:{}\n", mc_data.meta.creator));
-    osu_file_content.push_str(&format!("Version:{}\n", mc_data.meta.version));
-    osu_file_content.push_str("Source:\nTags:\nBeatmapID:0\nBeatmapSetID:-1\n\n");
-
-    // 构建 Difficulty 部分
-    osu_file_content.push_str("[Difficulty]\n");
-    osu_file_content.push_str(&format!("HPDrainRate:8\nCircleSize:{}\nOverallDifficulty:8\nApproachRate:5\nSliderMultiplier:1.4\nSliderTickRate:1\n\n", mc_data.meta.mode_ext.column));
-
-    // 构建 Events 部分
-    osu_file_content.push_str("[Events]\n//Background and Video events\n");
-    if !mc_data.meta.background.is_empty() {
-        osu_file_content.push_str(&format!("0,0,\"{}\",0,0\n", mc_data.meta.background));
-    }
-    osu_file_content.push_str("//Break Periods\n//Storyboard Layer 0 (Background)\n");
-    osu_file_content.push_str("//Storyboard Layer 1 (Fail)\n//Storyboard Layer 2 (Pass)\n");
-    osu_file_content.push_str("//Storyboard Layer 3 (Foreground)\n//Storyboard Layer 4 (Overlay)\n");
-    osu_file_content.push_str("//Storyboard Sound Samples\n\n");
-
-    // 构建 TimingPoints 部分
-    osu_file_content.push_str("[TimingPoints]\n");
-    // 这里需要实现 BPM 和效果列表的处理
-    // 根据您的 Python 代码逻辑，处理 mc_data.time 和 mc_data.effect 列表
-    let offset_ms = if let Some(note) = mc_data.note.last() {
-        note.offset.unwrap_or(0)
-    } else {
-        0
-    };
-    let mut current_time = 0.0 - offset_ms as f32;
-    let mut current_beat = mc_data.time[0].beat_to_float();
-    let mut next_beat = current_beat;
-    let bpm_base = mc_data.time[0].bpm;
-    let mut ms_per_beat = 60000.0 / bpm_base;
-    let mut index_effect = 0;
-    let mut bpm_check_list: Vec<(f32, f32)> = Vec::new();
-    let mut start_time = current_time;
-    let mut start_beat = 0.0; 
-    // 处理 BPM 列表
-    for (index, item) in mc_data.time.iter().enumerate() {
-        current_beat = item.beat_to_float();
-        ms_per_beat = 60000.0 / item.bpm;
-        bpm_check_list.push((current_beat, ms_per_beat));
-        if index == 0 {
-            while start_time < 0.0 {
-                start_time += ms_per_beat;
-                start_beat += 1.0;
-            }
-            start_time = start_time.floor();
-            osu_file_content.push_str(&format!("{},{:.12},4,2,0,10,1,0\n", start_time.floor() as i32, ms_per_beat));
-        } else {
-            osu_file_content.push_str(&format!("{},{:.12},4,2,0,10,1,0\n", current_time.floor() as i32, ms_per_beat));
-        }
-        if index < mc_data.time.len() - 1 {
-            next_beat = mc_data.time[index+1].beat_to_float();
-        } else {
-            break;
-        }
-        // 处理 effect_list 中的内容
-        if let Some(effect_list) = &mc_data.effect {                    
-            while index_effect < effect_list.len() {
-                let effect_beat = &effect_list[index_effect].beat_to_float();
-                // 检查 effectBeat 和 current_beat 的关系
-                if effect_beat >= &current_beat && effect_beat < &next_beat {
-                    let effect_time = current_time + (effect_beat - current_beat) * ms_per_beat;
-                    // 检查滚动速度
-                    if effect_list[index_effect].scroll < 0.0 {
-                        index_effect += 1;
-                        continue;
-                    }
-                    let speed_variation = if effect_list[index_effect].scroll != 0.0 {
-                        -100.0 / effect_list[index_effect].scroll
-                    } else {
-                        -100000000.0
-                    };
-        
-                    osu_file_content.push_str(&format!("{},{:.12},4,2,0,10,0,0\n", effect_time.floor() as i32, speed_variation));
-                    index_effect += 1;
-                } else {
-                    break;
-                }
-            }
-        }
-        current_time += (next_beat - current_beat) * ms_per_beat;
-    }
-    // 处理剩余的 effect 列表
-    if let Some(effect_list) = &mc_data.effect {
-        while index_effect < effect_list.len() {
-            let effect_beat = &effect_list[index_effect].beat_to_float();
-            let effect_time = current_time + (effect_beat - current_beat) * ms_per_beat;
-            // 检查滚动速度
-            if effect_list[index_effect].scroll < 0.0 {
-                index_effect += 1;
-                continue;
-            }
-            let speed_variation = if effect_list[index_effect].scroll != 0.0 {
-                -100.0 / effect_list[index_effect].scroll
-            } else {
-                -100000000.0
-            };
-            osu_file_content.push_str(&format!("{},{:.12},4,2,0,10,0,0\n", effect_time.floor() as i32, speed_variation));
-            index_effect += 1;
-        }
-    }
-    osu_file_content.push_str("\n");
-    // 构建 HitObjects 部分
-    osu_file_content.push_str("[HitObjects]\n");
-    // 这里需要实现 noteList 的处理
-    // 根据您的 Python 代码逻辑，处理 mc_data.note 列表
-    fn get_ms_from_beat(beat: f32, bpm_check_list: &[(f32, f32)]
-            ,start_time: f32, start_beat: f32) -> f32
-    {
-        let mut time = start_time;
-        let mut beat_index = 1;
-        let mut cur_bpm_beat = start_beat;
-        let mut next_bpm_beat = if bpm_check_list.len() > 1 {
-            bpm_check_list[beat_index].0
-        } else {
-            cur_bpm_beat
-        };
-        let mut cur_ms_per_beat = bpm_check_list[0].1;
-
-        while beat > next_bpm_beat && beat_index - 1 < bpm_check_list.len() {
-            time += cur_ms_per_beat * (next_bpm_beat - cur_bpm_beat);
-            cur_bpm_beat = next_bpm_beat;
-            cur_ms_per_beat = if bpm_check_list.len() > 1 {
-                bpm_check_list[beat_index].1
-            } else {
-                cur_ms_per_beat
-            };
-            beat_index += 1;
-            if beat_index >= bpm_check_list.len() {
-                break;
-            }
-            next_bpm_beat = bpm_check_list[beat_index].0;
-            // time = time.floor();
-        }
-        time += (beat - cur_bpm_beat) * cur_ms_per_beat;
-        time
-    }
-
-    // 遍历 noteList 来生成 HitObjectsList
-    for (i,item) in mc_data.note.iter().enumerate() {
-        // 获取节拍和时间
-        if i == &mc_data.note.len() - 1 {break;}
-        let item_beat = item.beat_to_float();
-        let beat_time = get_ms_from_beat(item_beat, &bpm_check_list, start_time, start_beat);
-        let mut x_pos = 0;
-        // 计算 X 位置
-        if let Some(column) = item.column
-        {
-            x_pos = ((column as f64 + 0.5) * 512.0 / mc_data.meta.mode_ext.column as f64) as u32;
-        }
-        // 处理 item 的 endbeat
-        if let Some(_end_beat) = &item.endbeat {
-            let item_beat_end = item.end_beat_to_float();
-            let beat_end_time = get_ms_from_beat(item_beat_end, &bpm_check_list, start_time, start_beat);
-            osu_file_content.push_str(&format!(
-                "{},192,{},128,0,{}:0:0:0:0:\n",
-                x_pos,
-                beat_time.floor() as i32,
-                beat_end_time.floor() as i32
-            ));
-        } else {
-            let start_flag = if i == 0 {5} else {1};
-            // 没有 endbeat 的情况
-            osu_file_content.push_str(&format!(
-                "{},192,{},{},0,0:0:0:0:\n",
-                x_pos,
-                beat_time.floor() as i32,
-                start_flag,
-            ));
-        }
-    }
-
-    // 将内容写入 .osu 文件
-    // 使用 PathBuf 来处理文件路径
     let mut osu_path = PathBuf::from(mc_path);
-
     // 获取文件名部分（带后缀）
     if let Some(file_stem) = osu_path.file_stem() {
         // 重新组合路径
         osu_path.set_file_name(format!("{}.osu", file_stem.to_string_lossy()));
     }
 
-    // 打印生成的 .osu 文件路径
     println!("Generating .osu file at: {:?}", osu_path);
-
     // 创建和写入 .osu 文件
-    let mut osu_file = File::create(osu_path)?;
-    osu_file.write_all(osu_file_content.as_bytes())?;
+    let osu_file = File::create(osu_path)?;
+    let mut writer = BufWriter::new(osu_file);
+
+    // 您可以继续根据解析后的数据进行其他操作
+    // 构建 General 部分
+    write!(writer, "osu file format v14\n\n[General]\n")?;
+    write!(writer, "AudioFilename: {}\n", audio)?;
+    write!(writer, "AudioLeadIn: 0\nPreviewTime: {}\nCountdown: 0\nSampleSet: Soft\n", &mc_data.meta.preview.unwrap_or(0))?;
+    write!(writer, "StackLeniency: 0.7\nMode: 3\nLetterboxInBreaks: 0\nSpecialStyle: 0\nWidescreenStoryboard: 1\n\n")?;
+
+    // 构建 Editor 部分
+    write!(writer, "[Editor]\nDistanceSpacing: 1\nBeatDivisor: 8\nGridSize: 4\nTimelineZoom: 2\n\n")?;
+
+    // 构建 Metadata 部分
+    write!(writer, "[Metadata]\n")?;
+    write!(writer, "Title:{}\n", mc_data.meta.song.titleorg.as_deref().unwrap_or(&mc_data.meta.song.title))?;
+    write!(writer, "TitleUnicode:{}\n", mc_data.meta.song.title)?;
+    write!(writer, "Artist:{}\n", mc_data.meta.song.artistorg.as_deref().unwrap_or(&mc_data.meta.song.artist))?;
+    write!(writer, "ArtistUnicode:{}\n", mc_data.meta.song.artist)?;
+    write!(writer, "Creator:{}\n", mc_data.meta.creator)?;
+    write!(writer, "Version:{}\n", mc_data.meta.version)?;
+    write!(writer, "Source:\nTags:\nBeatmapID:0\nBeatmapSetID:-1\n\n")?;
+
+    // 构建 Difficulty 部分
+    write!(writer, "[Difficulty]\n")?;
+    write!(writer, "HPDrainRate:8\nCircleSize:{}\nOverallDifficulty:8\nApproachRate:5\nSliderMultiplier:1.4\nSliderTickRate:1\n\n", mc_data.meta.mode_ext.column)?;
+
+    // 构建 Events 部分
+    write!(writer, "[Events]\n//Background and Video events\n")?;
+    if !mc_data.meta.background.is_empty() {
+        write!(writer, "0,0,\"{}\",0,0\n", mc_data.meta.background)?;
+    }
+    write!(writer, "//Break Periods\n//Storyboard Layer 0 (Background)\n")?;
+    write!(writer, "//Storyboard Layer 1 (Fail)\n//Storyboard Layer 2 (Pass)\n")?;
+    write!(writer, "//Storyboard Layer 3 (Foreground)\n//Storyboard Layer 4 (Overlay)\n")?;
+    write!(writer, "//Storyboard Sound Samples\n\n")?;
+
+    // 构建 TimingPoints 部分
+    
+    // 这里需要实现 BPM 和效果列表的处理
+    // 这里用来写新的实现方法：
+    let offset_ms = if let Some(note) = mc_data.note.last() {
+        note.offset.unwrap_or(0)
+    } else {
+        0
+    } as f64;
+    
+    // 取第一个BPM为基准BPM
+    let bpm_base = mc_data.time.get(0)
+        .map(|t| t.bpm as f64)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "Missing BPM data"))?;
+    let interval_base = 60000_f64 / bpm_base;
+    // let used = (interval_base * 10e11).round() / 10e11;
+    // write!(writer, "//Original = {interval_base}, Used = {used}\n\n")?; // 仅做测试！
+    write!(writer, "[TimingPoints]\n")?;
+    
+    let mut bpm_list: Vec<(f64, u64, f64)> = Vec::new(); // 分别记录Malody的拍数,对应的osu内毫秒时刻和间隔时间
+    
+    for (index, item) in mc_data.time.iter().enumerate() {
+        if index == 0 {
+            let start_beat = (offset_ms as f64 / interval_base).ceil();
+            let start_time = (start_beat * interval_base - offset_ms).floor() as u64;
+
+            bpm_list.push((start_beat, start_time, interval_base));
+            continue;
+        }
+        let current_beat = item.beat_to_float();
+        let current_interval = 60000_f64 / item.bpm;
+        
+        let (old_beat, old_time, old_interval) = bpm_list[index-1];
+        let current_time = old_time + ((current_beat - old_beat) * old_interval) as u64;
+        bpm_list.push((current_beat, current_time, current_interval));
+    }
+
+    let beat_to_time = |beat: f64| {
+        // 处理空列表情况
+        if bpm_list.is_empty() {
+            return 0;
+        }
+        // 添加前导检查
+        if beat < bpm_list[0].0 {
+            return (beat * interval_base - offset_ms) as u64;
+        }
+        // 使用更安全的二分查找
+        let idx = bpm_list.partition_point(
+            |probe| probe.0 <= beat).saturating_sub(1);
+        
+        let item = &bpm_list[idx];
+        let interv = (item.2 * 10e11).round() / 10e11;
+        item.1 + ((beat - item.0) * interv).floor() as u64
+    };
+
+    let mut effect_list: Vec<(f64, u64, f64)> = Vec::new(); // 分别记录Malody的拍数,对应的osu内毫秒时刻和osu格式变速
+
+    if let Some(effects) = &mc_data.effect {
+        for (_index, item) in effects.iter().enumerate() {
+            let current_beat = item.beat_to_float();
+            let current_time = beat_to_time(current_beat);
+            let scroll = item.scroll;
+            let osu_scroll = if scroll > 0_f64 {
+                -100_f64 / scroll
+            } else {
+                -100000000_f64
+            };
+            effect_list.push((current_beat, current_time, osu_scroll));
+        }
+    }
+
+    // 不会有谱面有一百万个timing吧，不用双指针了，怎么简单怎么来咯
+    // let timings = [bpm_list, effect_list].concat().sort_by_key(|x| x.1);
+    // 合并两个有序列表（假设bpm_list和effect_list已按current_time升序排列）
+    let min_time = bpm_list.first().map(|x| x.1).unwrap_or(0);
+
+    let mut i = 0;  // bpm_list指针
+    // 跳过早于bpm起始时间的effect元素
+    let mut j = effect_list.partition_point(|x| x.1 < min_time);
+
+    while i < bpm_list.len() && j < effect_list.len() {
+        let bpm = &bpm_list[i];
+        let eff = &effect_list[j];
+
+        // 比较时间戳并优先写入较小的
+        if bpm.1 <= eff.1 {
+            write!(writer, "{},{:.12},4,2,0,10,1,0\n", bpm.1, bpm.2)?;
+            i += 1;
+        } else {
+            write!(writer, "{},{:.12},4,2,0,10,0,0\n", eff.1, eff.2)?;
+            j += 1;
+        }
+    }
+
+    // 处理剩余元素
+    while i < bpm_list.len() {
+        write!(writer, "{},{:.12},4,2,0,10,1,0\n", bpm_list[i].1, bpm_list[i].2)?;
+        i += 1;
+    }
+
+    while j < effect_list.len() {
+        write!(writer, "{},{:.12},4,2,0,10,0,0\n", effect_list[j].1, effect_list[j].2)?;
+        j += 1;
+    }
+
+    // 构建 HitObjects 部分
+    let total_column = mc_data.meta.mode_ext.column;
+    let column_factor = 512.0 / total_column as f64;
+    write!(writer, "\n[HitObjects]\n")?;
+
+    let hit_objects: Vec<_> = mc_data.note[..mc_data.note.len()-1]
+    .par_iter()
+    .map(|item| {
+        let item_time = beat_to_time(item.beat_to_float());
+        let column = item.column.unwrap_or(0);
+        let x_pos = ((column as f64 + 0.5) * column_factor as f64).floor() as u64;
+        // 处理 item 的 endbeat
+        if let Some(_end_beat) = &item.endbeat {
+            let item_beat_end = item.end_beat_to_float();
+            let item_end_time = beat_to_time(item_beat_end);
+            format!("{},192,{},128,0,{}:0:0:0:0:",
+                x_pos, item_time, item_end_time)
+        } else {
+            let start_flag = if i == 0 {5} else {1};
+            // 没有 endbeat 的情况
+            format!("{},192,{},{},0,0:0:0:0:",
+                x_pos, item_time, start_flag)
+        }
+    })
+    .collect();
+
+    writer.write_all(hit_objects.join("\n").as_bytes())?;
     
     Ok(())
 }
 
 fn analyze_mc_file(file_path: &Path) -> io::Result<McData> {
     // 打开文件并使用 BufReader 读取文件内容
-    let file = File::open(file_path).unwrap(); // 将 io::Error 转换为 serde_json::Error
+    let file = File::open(file_path)?;
     let mut reader = BufReader::new(file);
     let mut content = String::new();
     reader.read_to_string(&mut content)?;

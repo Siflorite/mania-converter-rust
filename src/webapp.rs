@@ -1,4 +1,4 @@
-use actix_web::{web, App, HttpRequest, HttpResponse, HttpServer, Responder};
+use actix_web::{web, App, HttpRequest, HttpResponse, HttpServer, Responder, get, post};
 use actix_multipart::Multipart;
 use actix_files::NamedFile;
 use futures_util::stream::StreamExt as _;
@@ -23,7 +23,8 @@ fn generate_unique_filename(extension: &str) -> String {
 }
 
 // HTML 页面：上传文件表单
-async fn upload_page() -> impl Responder {
+#[get("/")]
+pub async fn upload_page() -> impl Responder {
     let html = r#"
         <!DOCTYPE html>
         <html>
@@ -46,7 +47,8 @@ async fn upload_page() -> impl Responder {
 }
 
 // 上传文件的处理逻辑
-async fn upload_mcz(mut payload: Multipart) -> impl Responder {
+#[post("/upload")]
+pub async fn upload_mcz(mut payload: Multipart) -> impl Responder {
     // 创建临时目录用于存储上传的文件
     let temp_dir_path = env::temp_dir().join("upload_temp");
     if !temp_dir_path.exists() {
@@ -66,7 +68,7 @@ async fn upload_mcz(mut payload: Multipart) -> impl Responder {
             }
            // 保存上传的文件到临时目录
             let filepath = temp_dir_path.join(unique_filename);
-            println!("File uploaded: {}", filepath.display());
+            println!("File uploading: {}", filepath.display());
             let mut f = File::create(&filepath).unwrap();
             while let Some(chunk) = field.next().await {
                 let data = chunk.unwrap();
@@ -112,7 +114,8 @@ async fn upload_mcz(mut payload: Multipart) -> impl Responder {
 }
 
 // 提供下载 .osz 文件的处理逻辑
-async fn download_osz(filename: web::Path<String>, req: HttpRequest) -> impl Responder {
+#[get("/download/{filename}")]
+pub async fn download_osz(filename: web::Path<String>, req: HttpRequest) -> impl Responder {
     let filename = filename.into_inner(); // 提取路径参数
     let temp_dir = env::temp_dir().join("upload_temp");
     let file_path = temp_dir.join(&filename);
@@ -174,10 +177,12 @@ async fn download_osz(filename: web::Path<String>, req: HttpRequest) -> impl Res
 #[actix_web::main]
 pub async fn main() -> std::io::Result<()> {
     HttpServer::new(|| {
-        App::new()
-            .route("/", web::get().to(upload_page)) // 显示上传页面
-            .route("/upload", web::post().to(upload_mcz)) // 处理文件上传
-            .route("/download/{filename}", web::get().to(download_osz)) // 提供文件下载
+        App::new().service(
+            web::scope("")
+                .service(upload_page)
+                .service(upload_mcz)
+                .service(download_osz)
+        )
     })
     .bind(("0.0.0.0", 80))?
     .run()
