@@ -1,6 +1,6 @@
 [package]
 name = "mania-converter"
-version = "0.2.1"
+version = "0.3.0"
 authors = ["Siflorite <monokhrom@163.com>"]
 edition = "2021"
 
