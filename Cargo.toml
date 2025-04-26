@@ -12,6 +12,7 @@ zip = "0.5.11"
 tempdir = "0.3"
 serde = { version = "*", features = ["derive"] }
 serde_json = "*"
+rayon = "1.10.0"
 # For webapp:
 actix-web = "4.0"
 actix-multipart = "0.4"
