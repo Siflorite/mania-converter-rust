@@ -1,0 +1,33 @@
+/target
+.shuttle*
+**/*.rs.bk       
+Secrets*.toml
+.mcz*
+.osu*
+
+# 开发环境文件
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# 构建产物
+*.exe
+*.dll
+*.so
+*.dylib
+
+# 调试文件
+*.debug
+*.pdb
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# 本地环境文件
+.env
+*.local
+
+!Cargo.lock
+!webapp/Cargo.lock
