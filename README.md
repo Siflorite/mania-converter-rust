@@ -42,14 +42,15 @@ mania-converter = {git = "https://github.com/Siflorite/mania-converter-rust"}
 Then you can just use it in your project:
 ```Rust
 use mania_converter::mcz2osz::process_mcz_file;
+use mania_converter::BeatMapInfo;
 // Application
-pub fn process(file_path: &str) -> io::Result<PathBuf> {
+pub fn process(file_path: &str) -> io::Result<(PathBuf, Vec<BeatMapInfo>)> {
     let mcz_path = Path::new(&file_path).to_path_buf();
     process_mcz_file(mcz_path)
 }
 ```
 
 ## TODO
-~~SR Calculation.~~ Added in v0.4.0
-.osu/.osz to .mc/.mcz
-Some other converting stuff?
+~~SR Calculation.~~ Added in v0.4.0<br>
+.osu/.osz to .mc/.mcz<br>
+Some other converting stuff?<br>
