@@ -1,25 +1,18 @@
 [package]
 name = "mania-converter"
-version = "0.3.0"
+version = "0.4.0"
 authors = ["Siflorite <monokhrom@163.com>"]
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[workspace]
+members = ["webapp"]
+
 [dependencies]
-walkdir = "2.3.2"
-zip = "0.5.11"
+walkdir = "2.5"
+zip = "2.6"
 tempdir = "0.3"
 serde = { version = "*", features = ["derive"] }
 serde_json = "*"
-rayon = "1.10.0"
-# For webapp:
-actix-web = "4.0"
-actix-multipart = "0.4"
-actix-files = "0.6.6"
-tokio = { version = "1", features = ["full"] }
-reqwest = { version = "0.11", features = ["blocking"] }
-futures-util = "0.3"
-uuid = {version = "1.11.0", features = ["v4"]}
-lazy_static = "1.5.0"
-mime = "0.3.17"
+rayon = "1.10"
