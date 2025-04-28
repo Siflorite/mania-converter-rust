@@ -27,7 +27,7 @@ pub struct OsuMisc {
 
 #[derive(Debug)]
 pub struct OsuTimingPoint {
-    pub time: u32,
+    pub time: f64,
     pub val: f64, 
     pub is_timing: bool,
 }

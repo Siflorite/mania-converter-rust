@@ -373,12 +373,12 @@ fn convert_mc_to_osu(mc_data: &McData) -> io::Result<Option<OsuData>> {
         // 比较时间戳并优先写入较小的
         if bpm.1 <= eff.1 {
             osu_data.timings.push(
-                OsuTimingPoint { time: bpm.1, val: bpm.2, is_timing: true }
+                OsuTimingPoint { time: bpm.1 as f64, val: bpm.2, is_timing: true }
             );
             i += 1;
         } else {
             osu_data.timings.push(
-                OsuTimingPoint { time: eff.1, val: eff.2, is_timing: false }
+                OsuTimingPoint { time: eff.1 as f64, val: eff.2, is_timing: false }
             );
             j += 1;
         }
@@ -387,14 +387,14 @@ fn convert_mc_to_osu(mc_data: &McData) -> io::Result<Option<OsuData>> {
     // 处理剩余元素
     while i < bpm_list.len() {
         osu_data.timings.push(
-            OsuTimingPoint { time: bpm_list[i].1, val: bpm_list[i].2, is_timing: true }
+            OsuTimingPoint { time: bpm_list[i].1 as f64, val: bpm_list[i].2, is_timing: true }
         );
         i += 1;
     }
 
     while j < effect_list.len() {
         osu_data.timings.push(
-            OsuTimingPoint { time: effect_list[j].1, val: effect_list[j].2, is_timing: false }
+            OsuTimingPoint { time: effect_list[j].1 as f64, val: effect_list[j].2, is_timing: false }
         );
         j += 1;
     }
