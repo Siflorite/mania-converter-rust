@@ -7,14 +7,17 @@ use std::fmt;
 
 #[derive(Debug)]
 pub struct BeatMapInfo {
-    title: String,
-    title_unicode: Option<String>,
-    artist: String,
-    artist_unicode: Option<String>,
-    creator: String,
-    version: String,
-    column_count: u8,
-    sr: Option<f64>
+    pub title: String,
+    pub title_unicode: Option<String>,
+    pub artist: String,
+    pub artist_unicode: Option<String>,
+    pub creator: String,
+    pub version: String,
+    pub column_count: u8,
+    pub min_bpm: f64,
+    pub max_bpm: Option<f64>,
+    pub length: u32,
+    pub sr: Option<f64>
 }
 
 impl fmt::Display for BeatMapInfo {
@@ -29,13 +32,18 @@ impl fmt::Display for BeatMapInfo {
             true => self.title.clone(),
             false => format!("{} ({})", self.artist, artist_unicode_str)
         };
+        let bpm_str = match self.max_bpm {
+            Some(val) => format!("{}-{}", self.min_bpm, val),
+            None => format!("{}", self.min_bpm)
+        };
+        let length_str = format!("{}:{:02}.{:03}", self.length / 60000, (self.length % 60000) / 1000, self.length % 1000);
         
         let sr_str = self.sr.map_or("N/A".into(), |v| format!("{:.4}", v));
         
         write!(
             f,
-            "Title: {}\nArtist: {}\nCreator: {}\nVersion: {}\nColumns: {}\nSR: {}",
-            title_str, artist_str, self.creator, self.version, self.column_count, sr_str
+            "Title: {}\nArtist: {}\nCreator: {}\nVersion: {}\nColumns: {}\nBPM: {}\nLength: {}\nSR: {}",
+            title_str, artist_str, self.creator, self.version, self.column_count, bpm_str, length_str, sr_str
         )
     }
 }

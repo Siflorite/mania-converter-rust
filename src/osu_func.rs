@@ -2,6 +2,7 @@ pub mod calc_sr;
 pub mod osz_func;
 mod helper_functions;
 
+use core::f64;
 use std::fs::File;
 use std::io::{self, BufRead, BufReader};
 pub use calc_sr::{calculate_from_data, calculate_from_file};
@@ -188,7 +189,36 @@ impl OsuData {
         Ok(OsuData { misc, timings, notes})
     }
 
+    fn get_bpm_range(&self) -> (f64, Option<f64>) {
+        // FilterMap will not include None values
+        let bpm_list: Vec<f64> = self.timings
+            .iter().filter_map(|t| {
+                match t.is_timing {
+                    true => Some(60000.0 / t.val),
+                    false => None
+                }
+            }).collect();
+        if bpm_list.is_empty() { return (0.0, None) }
+        let min_bpm = *bpm_list.iter().min_by(|&x, &y| x.partial_cmp(y).unwrap()).unwrap();
+        let max_bpm: Option<f64> = if bpm_list.len() == 1 {None} else {
+            Some(*bpm_list.iter().max_by(|&x, &y| x.partial_cmp(y).unwrap()).unwrap())
+        };
+        (min_bpm, max_bpm)
+    }
+
+    fn get_length(&self) -> u32 {
+        let min_time = self.notes.iter().map(|n| n.time).min().unwrap_or(0);
+        let max_time = self.notes.iter().map(|n| n.time).max().unwrap_or(0);
+        let max_time_tail = self.notes.iter().filter_map(|n| n.end_time).max().unwrap_or(0);
+        let length = max_time.max(max_time_tail).saturating_sub(min_time);
+        length
+    }
+
     pub fn to_beatmap_info(&self, b_calc_sr: bool) -> BeatMapInfo {
+        let (min_bpm, max_bpm) = self.get_bpm_range();
+
+        let length = self.get_length();
+
         BeatMapInfo {
             title: self.misc.title.clone(),
             title_unicode: Some(self.misc.title_unicode.clone()),
@@ -197,6 +227,9 @@ impl OsuData {
             creator: self.misc.creator.clone(),
             version: self.misc.version.clone(),
             column_count: self.misc.circle_size as u8,
+            min_bpm: min_bpm,
+            max_bpm: max_bpm,
+            length: length,
             sr: 
             if b_calc_sr { 
                 match calculate_from_data(self, 1.0) {

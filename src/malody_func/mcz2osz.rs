@@ -48,7 +48,7 @@ pub fn process_whole_dir_mcz(dir: &str, b_calc_sr: bool, b_print_results: bool) 
         println!("\nConversion Summary:");
         println!("{:-<80}", "");
         for (path, info) in processed.iter() {
-            println!("\nOSZ File: {}", path.display());
+            println!("OSZ File: {}", path.display());
             println!("Contains {} beatmaps:", info.len());
             for beatmap in info.iter() {
                 println!("\n{beatmap}");
