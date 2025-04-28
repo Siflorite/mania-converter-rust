@@ -5,7 +5,7 @@ use std::fmt;
 
 // Some miscellaneous stuff:
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct BeatMapInfo {
     pub title: String,
     pub title_unicode: Option<String>,
