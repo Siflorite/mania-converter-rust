@@ -29,7 +29,7 @@ impl fmt::Display for BeatMapInfo {
             false => format!("{} ({})", self.title, title_unicode_str)
         };
         let artist_str = match artist_unicode_str.is_empty() {
-            true => self.title.clone(),
+            true => self.artist.clone(),
             false => format!("{} ({})", self.artist, artist_unicode_str)
         };
         let bpm_str = match self.max_bpm {
