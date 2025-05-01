@@ -79,7 +79,10 @@ where
     let temp_dir_path = temp_dir.path();
     
     // 使用原有核心处理逻辑，默认计算难度
-    let (osz_path, beatmap_infos) = process_mcz_core(path, temp_dir_path, true)?;
+    let (osz_path, mut beatmap_infos) = process_mcz_core(path, temp_dir_path, true)?;
+    beatmap_infos.sort_by(|x, y| {
+        x.sr.partial_cmp(&y.sr).unwrap()
+    });
     // 执行后处理闭包
     post_process(&beatmap_infos, temp_dir_path)?;
     
