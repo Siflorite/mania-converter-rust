@@ -19,7 +19,8 @@ pub struct BeatMapInfo {
     pub max_bpm: Option<f64>,
     pub length: u32,
     pub sr: Option<f64>,
-    pub ln_ratio: f64,
+    pub note_count: u32,
+    pub ln_count: u32,
     pub bg_name: Option<String>, // Not used in formatted display
 }
 
@@ -42,11 +43,12 @@ impl fmt::Display for BeatMapInfo {
         let length_str = format!("{}:{:02}.{:03}", self.length / 60000, (self.length % 60000) / 1000, self.length % 1000);
         
         let sr_str = self.sr.map_or("N/A".into(), |v| format!("{:.4}", v));
+        let ln_ratio = self.ln_count as f64 /  (self.ln_count + self.note_count) as f64;
         
         write!(
             f,
             "Title: {}\nArtist: {}\nCreator: {}\nVersion: {}\nColumns: {}\nBPM: {}\nLength: {}\nSR: {}\nLN_Ratio: {:.3}",
-            title_str, artist_str, self.creator, self.version, self.column_count, bpm_str, length_str, sr_str, self.ln_ratio
+            title_str, artist_str, self.creator, self.version, self.column_count, bpm_str, length_str, sr_str, ln_ratio
         )
     }
 }

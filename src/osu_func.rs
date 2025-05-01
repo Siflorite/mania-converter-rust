@@ -219,11 +219,10 @@ impl OsuData {
 
         let length = self.get_length();
 
-        let note_count = self.notes.len();
+        let note_count = self.notes.len() as u32;
         let ln_count = self.notes.iter().filter(
             |&n| n.end_time.is_some()
-        ).count();
-        let ln_ratio = ln_count as f64 / note_count as f64;
+        ).count() as u32;
 
         BeatMapInfo {
             title: self.misc.title.clone(),
@@ -243,7 +242,8 @@ impl OsuData {
                     Err(_) => None
                 }
             } else { None },
-            ln_ratio: ln_ratio,
+            note_count: note_count - ln_count,
+            ln_count: ln_count,
             bg_name: Some(self.misc.background.clone())
         }
     }

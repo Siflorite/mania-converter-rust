@@ -22,7 +22,9 @@ struct CardData {
     length: String,
     sr_gradient: String,
     sr: String,
-    ln_ratio: String,
+    note_str: String,
+    ln_str: String,
+    len_pos: u32,
     y_offset: f64,
 }
 
@@ -43,8 +45,13 @@ pub fn generate_info_abstract(info_vec: &[BeatMapInfo], temp_dir_path: &Path, sa
         let title = info.title_unicode.as_ref().unwrap_or(&info.title);
         let artist = info.artist_unicode.as_ref().unwrap_or(&info.artist);
         let bpm_str = format_bpm_str(info.min_bpm, info.max_bpm);
+        let delta_len = bpm_str.len() as u32 * 12;
         let length_str = format_length_str(info.length);
         let sr = info.sr.unwrap_or(0.0);
+
+        let total_count = info.note_count + info.ln_count;
+        let note_str = format!("{} ({:.02}%)", info.note_count, info.note_count as f64 / total_count as f64 * 100.0);
+        let ln_str = format!("{} ({:.02}%) = {}", info.ln_count, info.ln_count as f64 / total_count as f64 * 100.0, total_count);
 
         CardData {
             bg_image: bg_path_string,
@@ -57,7 +64,9 @@ pub fn generate_info_abstract(info_vec: &[BeatMapInfo], temp_dir_path: &Path, sa
             length: length_str,
             sr_gradient: format_sr_gredient(sr),
             sr: format!("{:.02}", sr),
-            ln_ratio: format!("{:.02}", info.ln_ratio * 100.0), 
+            note_str: note_str,
+            ln_str: ln_str,
+            len_pos: 190 + delta_len,
             y_offset: i as f64 * CARD_HEIGHT
         }
     }).collect();
