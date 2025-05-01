@@ -6,7 +6,7 @@ use core::f64;
 use std::fs::File;
 use std::io::{self, BufRead, BufReader};
 pub use calc_sr::{calculate_from_data, calculate_from_file};
-pub use osz_func::parse_osz_file;
+pub use osz_func::{parse_osz_file, parse_osz_postprocess, parse_whole_dir_osz};
 
 use crate::BeatMapInfo;
 
@@ -219,6 +219,12 @@ impl OsuData {
 
         let length = self.get_length();
 
+        let note_count = self.notes.len();
+        let ln_count = self.notes.iter().filter(
+            |&n| n.end_time.is_some()
+        ).count();
+        let ln_ratio = ln_count as f64 / note_count as f64;
+
         BeatMapInfo {
             title: self.misc.title.clone(),
             title_unicode: Some(self.misc.title_unicode.clone()),
@@ -233,10 +239,12 @@ impl OsuData {
             sr: 
             if b_calc_sr { 
                 match calculate_from_data(self, 1.0) {
-                    Ok(sr) => Some(sr),
+                    Ok(sr) => Some(sr.max(0.0)),
                     Err(_) => None
                 }
-            } else { None }
+            } else { None },
+            ln_ratio: ln_ratio,
+            bg_name: Some(self.misc.background.clone())
         }
     }
 }

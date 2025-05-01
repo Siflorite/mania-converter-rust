@@ -1,0 +1,93 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="{{total_height}}" viewBox="0 0 1200 {{total_height}}">
+    <defs>
+        <!-- 定义滤镜：右侧背景淡化 -->
+        <filter id="blurAndFade">
+            <feGaussianBlur stdDeviation="5" />
+            <feComponentTransfer>
+                <feFuncA type="linear" slope="0.5" />
+            </feComponentTransfer>
+        </filter>
+        <clipPath id="globalClip">
+            <rect x="0" y="0" width="1200" height="300" rx="20" ry="20"/>
+        </clipPath>
+        <clipPath id="leftClip">
+            <rect x="0" y="0" width="300" height="300" rx="20" ry="20"/>
+        </clipPath>
+    </defs>
+
+    <rect width="1200" height="{{total_height}}" fill="black"/>
+
+    <!-- 卡片容器 -->
+    {{#each cards}}
+    <g transform="translate(0, {{y_offset}})">
+    <!-- 单个卡片模板 -->
+        <g clip-path="url(#globalClip)">
+            <!-- 左侧 300x300 区域 -->
+            <g transform="translate(0, 0)">
+                <image
+                    href="{{bg_image}}"
+                    width="300" height="300"
+                    clip-path="url(#leftClip)"
+                    preserveAspectRatio="xMidYMid slice" 
+                />
+            </g>
+
+            <!-- 右侧 900x300 区域 -->
+            <g transform="translate(300, 0)">
+                <!-- 背景缩放裁剪 -->
+                <image
+                    href="{{bg_image}}"
+                    width="920" height="300"
+                    x="-20"
+                    filter="url(#blurAndFade)"
+                    preserveAspectRatio="xMidYMid slice"
+                />
+                
+                <!-- 文字组 -->
+                <g transform="translate(35, 85)" font-size="28" font-family="Source Han Sans" fill="white">
+                    <!-- 标题 -->
+                    <text class="title" stroke="#000" paint-order="stroke">
+                        <tspan font-size="42" font-weight="700" stroke-width="1px">{{title}}</tspan>
+                        <tspan x="0" dy="48" font-size="24" fill="#ccc" stroke-width="0.6px">{{artist}} // {{creator}}</tspan>
+                        <tspan x="0" dy="48" font-size="20" stroke-width="0.6px">[{{version}}]</tspan>
+                    </text>
+
+                    <!-- 元数据 -->
+                    <g transform="translate(0, 150)" font-size="28" paint-order="stroke">
+                        <g transform="translate(0, 0)">
+                            <text stroke-width="1.5px" stroke="#000">
+                            <tspan font-family="Noto Color Emoji">🎹</tspan>
+                            <tspan font-family="Source Han Sans">{{column_count}}K</tspan>
+                            </text>
+                        </g>
+                        <g transform="translate(110, 0)">
+                            <text font-family="Noto Color Emoji">🎵</text>
+                            <g transform="translate(40, 0)">
+                                <text font-family="Source Han Sans">{{bpm}}</text>
+                            </g>
+                        </g>
+                        <g transform="translate(310, 0)">
+                            <text stroke-width="1.5px" stroke="#000">
+                            <tspan font-family="Noto Color Emoji">⏱️</tspan>
+                            <tspan font-family="Source Han Sans">{{length}}</tspan>
+                            </text>
+                        </g>
+                        <g transform="translate(500, 0)">
+                            <rect x="-5" y="-30" width="120" height="40" fill="{{sr_gradient}}" rx="20" ry="20"/>
+                            <text stroke-width="1.5px" stroke="#000">
+                            <tspan font-family="Source Han Sans">★ {{sr}}</tspan>
+                            </text>
+                        </g>
+                        <g transform="translate(640, 0)">
+                            <text stroke-width="1.5px" stroke="#000">
+                            <tspan font-family="Noto Color Emoji">🍜</tspan>
+                            <tspan font-family="Source Han Sans">{{ln_ratio}}%</tspan>
+                            </text>
+                        </g>
+                    </g>
+                </g>
+            </g>
+        </g>
+    </g>
+    {{/each}}
+</svg>

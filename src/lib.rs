@@ -1,5 +1,6 @@
 pub mod malody_func;
 pub mod osu_func;
+pub mod graphx;
 
 use std::fmt;
 
@@ -17,7 +18,9 @@ pub struct BeatMapInfo {
     pub min_bpm: f64,
     pub max_bpm: Option<f64>,
     pub length: u32,
-    pub sr: Option<f64>
+    pub sr: Option<f64>,
+    pub ln_ratio: f64,
+    pub bg_name: Option<String>, // Not used in formatted display
 }
 
 impl fmt::Display for BeatMapInfo {
@@ -42,8 +45,8 @@ impl fmt::Display for BeatMapInfo {
         
         write!(
             f,
-            "Title: {}\nArtist: {}\nCreator: {}\nVersion: {}\nColumns: {}\nBPM: {}\nLength: {}\nSR: {}",
-            title_str, artist_str, self.creator, self.version, self.column_count, bpm_str, length_str, sr_str
+            "Title: {}\nArtist: {}\nCreator: {}\nVersion: {}\nColumns: {}\nBPM: {}\nLength: {}\nSR: {}\nLN_Ratio: {:.3}",
+            title_str, artist_str, self.creator, self.version, self.column_count, bpm_str, length_str, sr_str, self.ln_ratio
         )
     }
 }
