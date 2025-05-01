@@ -70,10 +70,10 @@ pub fn process_whole_dir_mcz(dir: &str, b_calc_sr: bool, b_print_results: bool) 
 /// 由于函数执行完后临时目录会被清除，请不要将生成的内容存放于临时目录中
 pub fn process_mcz_file_postprocess<F>(
     path: &Path,
-    post_process: F,
+    mut post_process: F,
 ) -> io::Result<PathBuf>
 where
-    F: Fn(&[BeatMapInfo], &Path) -> io::Result<()>,
+    F: FnMut(&[BeatMapInfo], &Path) -> io::Result<()>,
 {
     let temp_dir = tempdir::TempDir::new("mcz_to_osz")?;
     let temp_dir_path = temp_dir.path();
