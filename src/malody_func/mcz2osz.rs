@@ -12,6 +12,7 @@ use rayon::prelude::*;
 use crate::osu_func::{OsuData, OsuMisc, OsuTimingPoint, OsuHitObject};
 use crate::malody_func::McData;
 use crate::BeatMapInfo;
+use crate::misc::sanitize_filename;
 
 /// Convert all .mcz files under given dir to .osz files.  
 /// "." or "" will set dir to the Run Directory.
@@ -110,11 +111,12 @@ fn process_mcz_core(mcz_path: &Path, temp_dir_path: &Path, b_calc_sr: bool) -> i
     let required_files: Arc<Mutex<HashSet<PathBuf>>> = Arc::new(Mutex::new(HashSet::new()));
 
     let add_files_to_required = |bg: &Path, audio: &Path| {
-        if bg.exists() {
+        println!("{:?}, {:?}", bg, audio);
+        if bg.is_file() {
             let mut required_files = required_files.lock().unwrap();
             required_files.insert(bg.to_path_buf());
         }
-        if audio.exists() {
+        if audio.is_file() {
             let mut required_files = required_files.lock().unwrap();
             required_files.insert(audio.to_path_buf());
         }
@@ -322,7 +324,7 @@ fn convert_mc_to_osu(mc_data: &McData) -> io::Result<Option<OsuData>> {
     let mut osu_data = OsuData{
         misc: OsuMisc { 
             audio_file_name: audio.clone(), 
-            preview_time: mc_data.meta.preview.unwrap_or(0), 
+            preview_time: mc_data.meta.preview.unwrap_or(-1),
             title: mc_data.meta.song.titleorg.clone().unwrap_or(mc_data.meta.song.title.clone()), 
             title_unicode: mc_data.meta.song.title.clone(), 
             artist: mc_data.meta.song.artistorg.clone().unwrap_or(mc_data.meta.song.artist.clone()), 
@@ -338,16 +340,13 @@ fn convert_mc_to_osu(mc_data: &McData) -> io::Result<Option<OsuData>> {
     };
 
     // 构建 TimingPoints 部分
-    
-    // 这里需要实现 BPM 和效果列表的处理
-    // 这里用来写新的实现方法：
     let offset_ms = if let Some(note) = mc_data.note.last() {
         note.offset.unwrap_or(0)
     } else {
         0
     } as f64;
-    if osu_data.misc.preview_time > offset_ms as u32{
-        osu_data.misc.preview_time -= offset_ms as u32;
+    if osu_data.misc.preview_time > offset_ms as i32{
+        osu_data.misc.preview_time -= offset_ms as i32;
     }
     
     // 取第一个BPM为基准BPM
@@ -557,11 +556,4 @@ fn analyze_mc_file(file_path: &Path) -> io::Result<McData> {
     let mc_data: McData = serde_json::from_str(&content)?;
 
     Ok(mc_data)
-}
-
-fn sanitize_filename(file_name: &str) -> String {
-    // 将文件名中的非ASCII字符替换为下划线
-    file_name.chars()
-        .map(|c| if c.is_ascii() { c } else { '_' })
-        .collect()
 }

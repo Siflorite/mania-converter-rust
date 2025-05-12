@@ -8,7 +8,7 @@ struct Meta {
     creator: String,
     background: String,
     version: String,
-    preview: Option<u32>,
+    preview: Option<i32>,
     mode: u8,
     song: Song,
     mode_ext: ModeExt,
@@ -69,7 +69,7 @@ struct Note {
     column: Option<u8>,
     sound: Option<String>,
     // vol: Option<i16>,
-    offset: Option<u32>,
+    offset: Option<i32>,
     // r#type: Option<u8>,
 }
 impl Note {

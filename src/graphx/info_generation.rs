@@ -4,16 +4,19 @@ use serde_json::json;
 use std::{env, fs, io, path::{Path, PathBuf}, sync::Arc};
 
 use crate::BeatMapInfo;
+use crate::misc::sanitize_filename;
 
 const INFO_TEMPLATE_PATH: &str = "./svg/info_card.svg";
 const NO_IMAGE_PATH: &str = "./svg/no_image.jpg";
 const FONT_DIR_PATH: &str = "./font";
-const CARD_HEIGHT: f64 = 300.0;
+const CARD_HEIGHT: u32 = 300;
 
 #[derive(serde::Serialize)]
 struct CardData {
     bg_image: String,
+    title_ascii: String,
     title: String,
+    artist_ascii: String,
     artist: String,
     creator: String,
     version: String,
@@ -25,7 +28,7 @@ struct CardData {
     note_str: String,
     ln_str: String,
     len_pos: u32,
-    y_offset: f64,
+    y_offset: u32,
 }
 
 pub fn generate_info_abstract(info_vec: &[BeatMapInfo], temp_dir_path: &Path, save_pic_path: &Path) -> io::Result<PathBuf> {
@@ -43,7 +46,9 @@ pub fn generate_info_abstract(info_vec: &[BeatMapInfo], temp_dir_path: &Path, sa
         let bg_path_string = final_path.to_string_lossy().into_owned();
 
         let title = info.title_unicode.as_ref().unwrap_or(&info.title);
+        let title_ascii: &str = if &info.title == title {""} else {&info.title};
         let artist = info.artist_unicode.as_ref().unwrap_or(&info.artist);
+        let artist_ascii: &str = if &info.artist == artist {""} else {&info.artist};
         let bpm_str = format_bpm_str(info.min_bpm, info.max_bpm);
         let delta_len = bpm_str.len() as u32 * 12;
         let length_str = format_length_str(info.length);
@@ -55,24 +60,25 @@ pub fn generate_info_abstract(info_vec: &[BeatMapInfo], temp_dir_path: &Path, sa
 
         CardData {
             bg_image: bg_path_string,
+            title_ascii: title_ascii.into(),
             title: title.into(),
+            artist_ascii: artist_ascii.into(),
             artist: artist.into(),
             creator: info.creator.clone(),
             version: info.version.clone(),
             column_count: info.column_count,
             bpm: bpm_str,
             length: length_str,
-            sr_gradient: format_sr_gredient(sr),
+            sr_gradient: format_sr_gradient(sr),
             sr: format!("{:.02}", sr),
             note_str: note_str,
             ln_str: ln_str,
             len_pos: 190 + delta_len,
-            y_offset: i as f64 * CARD_HEIGHT
+            y_offset: i as u32 * CARD_HEIGHT
         }
     }).collect();
-
     // 渲染SVG
-    let total_height = card_vec.len() as f64 * CARD_HEIGHT;
+    let total_height = card_vec.len() as u32 * CARD_HEIGHT;
     let svg_content = reg.render("template", &json!({
         "total_height": total_height,
         "cards": card_vec
@@ -92,7 +98,7 @@ pub fn generate_info_abstract(info_vec: &[BeatMapInfo], temp_dir_path: &Path, sa
     let tree = usvg::Tree::from_str(&svg_content, &options)
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
 
-    let mut pixmap = tiny_skia::Pixmap::new(1200, total_height as u32)
+    let mut pixmap = tiny_skia::Pixmap::new(1200, total_height)
         .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "Failed to create pixmap"))?;
 
     resvg::render(&tree, tiny_skia::Transform::default(), &mut pixmap.as_mut());
@@ -103,8 +109,10 @@ pub fn generate_info_abstract(info_vec: &[BeatMapInfo], temp_dir_path: &Path, sa
     }
 
     // 保存为PNG
-    let pic_name = format!("{}.png", info_vec[0].title);
+    let santized_name = sanitize_filename(&info_vec[0].title);
+    let pic_name = format!("{}.png", santized_name);
     let pic_path = save_pic_path.join(pic_name);
+
     pixmap.save_png(&pic_path)
         .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
 
@@ -133,14 +141,14 @@ fn format_length_str(length: u32) -> String {
     format!("{}:{:02}.{:03}", mins, secs, msecs)
 }
 
-fn format_sr_gredient(sr: f64) -> String {
+fn format_sr_gradient(sr: f64) -> String {
     let colors = [
         (79.0, 192.0, 255.0), (124.0, 255.0, 79.0), (246.0, 240.0, 92.0), 
         (255.0, 78.0, 111.0), (198.0, 69.0, 184.0), (101.0, 99.0, 222.0), (0.0, 0.0, 0.0), (0.0, 0.0, 0.0)];
     let sr = sr.clamp(0.0, 10.0);
     let interval = 10.0 / (colors.len() - 2) as f64;
     let section = (sr / interval) as usize;
-    let partial = (sr - interval * section as f64) / 2.0;
+    let partial = (sr - interval * section as f64) / interval;
     let r = colors[section].0 + (colors[section + 1].0 - colors[section].0) * partial;
     let g = colors[section].1 + (colors[section + 1].1 - colors[section].1) * partial;
     let b = colors[section].2 + (colors[section + 1].2 - colors[section].2) * partial;

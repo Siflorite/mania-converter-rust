@@ -1,6 +1,7 @@
 pub mod malody_func;
 pub mod osu_func;
 pub mod graphx;
+pub mod misc;
 
 use std::fmt;
 

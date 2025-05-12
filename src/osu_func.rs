@@ -13,7 +13,7 @@ use crate::BeatMapInfo;
 #[derive(Debug)]
 pub struct OsuMisc {
     pub audio_file_name: String,
-    pub preview_time: u32,
+    pub preview_time: i32,
     pub title: String,
     pub title_unicode: String,
     pub artist: String,

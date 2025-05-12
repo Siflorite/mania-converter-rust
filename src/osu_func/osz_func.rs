@@ -21,6 +21,7 @@ pub fn parse_whole_dir_osz(dir: &str) -> io::Result<Vec<String>> {
         let path = entry.path();
         
         if path.extension() == Some(std::ffi::OsStr::new("osz")) {
+            println!("{:?}", path);
             generate_osz_info(path).ok()
         } else { None }
     }).map(|p| {
