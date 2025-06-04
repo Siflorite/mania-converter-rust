@@ -1,4 +1,5 @@
-use::handlebars::Handlebars;
+use handlebars::Handlebars;
+use lazy_static::lazy_static;
 use resvg::{usvg, tiny_skia};
 use serde_json::json;
 use std::{env, fs, io, path::{Path, PathBuf}, sync::Arc};
@@ -10,6 +11,21 @@ const INFO_TEMPLATE_PATH: &str = "./svg/info_card.svg";
 const NO_IMAGE_PATH: &str = "./svg/no_image.jpg";
 const FONT_DIR_PATH: &str = "./font";
 const CARD_HEIGHT: u32 = 300;
+
+lazy_static! {
+    static ref FONTS: Arc<usvg::fontdb::Database> = {
+        // 使用嵌入的字体资源初始化字体数据库
+        let mut fontdb_origin = usvg::fontdb::Database::new();
+        fontdb_origin.load_fonts_dir(FONT_DIR_PATH);
+        Arc::new(fontdb_origin)
+    };
+
+    static ref HANDLEBARS: handlebars::Handlebars<'static> = {
+        let mut reg = Handlebars::new();
+        reg.register_template_file("template", INFO_TEMPLATE_PATH).expect("Failed to register template");
+        reg
+    };
+}
 
 #[derive(serde::Serialize)]
 struct CardData {
@@ -32,9 +48,6 @@ struct CardData {
 }
 
 pub fn generate_info_abstract(info_vec: &[BeatMapInfo], temp_dir_path: &Path, save_pic_path: &Path) -> io::Result<PathBuf> {
-    let mut reg = Handlebars::new();
-    reg.register_template_file("template", INFO_TEMPLATE_PATH)
-        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
     let card_vec: Vec<CardData> = info_vec.iter().enumerate().map(|(i, info)| {
         let bg_name = match &info.bg_name {
             Some(s) => s.as_str(),
@@ -79,17 +92,14 @@ pub fn generate_info_abstract(info_vec: &[BeatMapInfo], temp_dir_path: &Path, sa
     }).collect();
     // 渲染SVG
     let total_height = card_vec.len() as u32 * CARD_HEIGHT;
-    let svg_content = reg.render("template", &json!({
+    let svg_content = HANDLEBARS.render("template", &json!({
         "total_height": total_height,
         "cards": card_vec
     })).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
 
-    let mut fontdb_origin = usvg::fontdb::Database::new();
-    fontdb_origin.load_fonts_dir(FONT_DIR_PATH);
-
     // 渲染选项
     let options = usvg::Options {
-        fontdb: Arc::new(fontdb_origin),
+        fontdb: FONTS.clone(),
         resources_dir: Some(temp_dir_path.to_path_buf()),
         ..Default::default()
     };

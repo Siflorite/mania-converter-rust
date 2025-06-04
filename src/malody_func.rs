@@ -4,30 +4,30 @@ pub use self::mcz2osz::*;
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
-struct Meta {
-    creator: String,
-    background: String,
-    version: String,
-    preview: Option<i32>,
-    mode: u8,
-    song: Song,
-    mode_ext: ModeExt,
+pub struct Meta {
+    pub creator: String,
+    pub background: String,
+    pub version: String,
+    pub preview: Option<i32>,
+    pub mode: u8,
+    pub song: Song,
+    pub mode_ext: ModeExt,
 }
 #[derive(Debug, Deserialize)]
-struct Song {
-    title: String,
-    artist: String,
-    titleorg: Option<String>,
-    artistorg: Option<String>,
+pub struct Song {
+    pub title: String,
+    pub artist: String,
+    pub titleorg: Option<String>,
+    pub artistorg: Option<String>,
 }
 #[derive(Debug, Deserialize)]
-struct ModeExt {
-    column: u8,
+pub struct ModeExt {
+    pub column: u8,
 }
 #[derive(Debug, Deserialize)]
-struct Beat {
-    beat: Vec<u32>,
-    bpm: f64,
+pub struct Beat {
+    pub beat: Vec<u32>,
+    pub bpm: f64,
 }
 impl Beat {
     fn beat_to_float(&self) -> f64 {
@@ -44,9 +44,9 @@ impl Beat {
     }
 }
 #[derive(Debug, Deserialize)]
-struct Effect {
-    beat: Vec<u32>,
-    scroll: f64,
+pub struct Effect {
+    pub beat: Vec<u32>,
+    pub scroll: f64,
 }
 impl Effect {
     fn beat_to_float(&self) -> f64 {
@@ -63,14 +63,14 @@ impl Effect {
     }
 }
 #[derive(Debug, Deserialize)]
-struct Note {
-    beat: Vec<u32>,
-    endbeat: Option<Vec<u32>>,
-    column: Option<u8>,
-    sound: Option<String>,
-    // vol: Option<i16>,
-    offset: Option<i32>,
-    // r#type: Option<u8>,
+pub struct Note {
+    pub beat: Vec<u32>,
+    pub endbeat: Option<Vec<u32>>,
+    pub column: Option<u8>,
+    pub sound: Option<String>,
+    pub vol: Option<i16>,
+    pub offset: Option<i32>,
+    pub r#type: Option<u8>,
 }
 impl Note {
     fn beat_to_float(&self) -> f64 {
@@ -102,9 +102,9 @@ impl Note {
     }
 }
 #[derive(Debug, Deserialize)]
-struct McData {
-    meta: Meta,
-    time: Vec<Beat>,
-    effect: Option<Vec<Effect>>,
-    note: Vec<Note>,
+pub struct McData {
+    pub meta: Meta,
+    pub time: Vec<Beat>,
+    pub effect: Option<Vec<Effect>>,
+    pub note: Vec<Note>,
 }

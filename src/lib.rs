@@ -15,6 +15,8 @@ pub struct BeatMapInfo {
     pub artist_unicode: Option<String>,
     pub creator: String,
     pub version: String,
+    pub beatmap_id: u64,
+    pub beatmap_set_id: i64,
     pub column_count: u8,
     pub min_bpm: f64,
     pub max_bpm: Option<f64>,
@@ -48,8 +50,8 @@ impl fmt::Display for BeatMapInfo {
         
         write!(
             f,
-            "Title: {}\nArtist: {}\nCreator: {}\nVersion: {}\nColumns: {}\nBPM: {}\nLength: {}\nSR: {}\nLN_Ratio: {:.3}",
-            title_str, artist_str, self.creator, self.version, self.column_count, bpm_str, length_str, sr_str, ln_ratio
+            "Title: {}\nArtist: {}\nCreator: {}\nVersion: {}\nBeatmapID: {}\nBeatmapSetID: {}\nColumns: {}\nBPM: {}\nLength: {}\nSR: {}\nLN_Ratio: {:.3}",
+            title_str, artist_str, self.creator, self.version, self.beatmap_id, self.beatmap_set_id, self.column_count, bpm_str, length_str, sr_str, ln_ratio
         )
     }
 }

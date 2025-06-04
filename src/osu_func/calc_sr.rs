@@ -1,4 +1,4 @@
-use crate::osu_func::OsuData;
+use crate::osu_func::OsuDataLegacy;
 use crate::osu_func::helper_functions::*;
 
 use std::collections::BTreeMap;
@@ -6,7 +6,7 @@ use std::collections::HashSet;
 use std::io;
 use std::borrow::Cow;
 
-fn preprocess(osu_data: &OsuData, speed: f64) -> 
+fn preprocess(osu_data: &OsuDataLegacy, speed: f64) -> 
     Result<(
         f64, // x, a timing window param
         u32, // k, num of columns
@@ -29,7 +29,9 @@ fn preprocess(osu_data: &OsuData, speed: f64) ->
 
     let mut note_seq: Vec<(u32, u32, i32)> = osu_data.notes.iter()
         .map(|note| {
-            let k = note.x_pos * osu_data.misc.circle_size / 512;
+            let cs = osu_data.misc.circle_size;
+            let k = note.x_pos * cs / 512;
+            let k = k.min(cs - 1);
             let h = (note.time as f64 * time_multiplier) as u32;
             let t = note.end_time.map_or(-1, |x| (x as f64 * time_multiplier) as i32);
             (k, h, t)
@@ -622,11 +624,11 @@ fn compute_c_and_ks(_col: u32, _total: u32, note_seq: &[(u32, u32, i32)], key_us
 }
 
 pub fn calculate_from_file(file_path: &str, speed: f64) -> io::Result<f64> {
-    let data = OsuData::from_file(file_path)?;
+    let data = OsuDataLegacy::from_file(file_path)?;
     calculate_from_data(&data, speed)
 }
 
-pub fn calculate_from_data(data: &OsuData, speed: f64) -> io::Result<f64> {
+pub fn calculate_from_data(data: &OsuDataLegacy, speed: f64) -> io::Result<f64> {
     // ln_seq_by_column is not used in the calculation
     let (x, k, t, note_seq, note_seq_by_column, ln_seq, tail_seq, _ln_seq_by_column) = 
         preprocess(data, speed)?;
@@ -733,8 +735,10 @@ pub fn calculate_from_data(data: &OsuData, speed: f64) -> io::Result<f64> {
 
     // 调整最终结果
     let total_notes = note_seq.len() as f64 + 
-        ln_seq.iter().map(|&(_, h, t)| (t - h).min(1000) as f64 / 400.0).sum::<f64>();
-    
+        ln_seq.iter()
+            .map(|&(_, h, t)| t.saturating_sub(h).min(1000) as f64 / 400.0)
+            .sum::<f64>();
+
     sr *= total_notes / (total_notes + 60.0);
     sr = rescale_high(sr);
     sr *= 0.975;

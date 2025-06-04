@@ -1,5 +1,5 @@
 use crate::BeatMapInfo;
-use crate::osu_func::OsuData;
+use crate::osu_func::OsuDataV128;
 
 use std::env;
 use std::fs::File;
@@ -102,7 +102,7 @@ fn parse_osz_core(osz_path: &Path, temp_dir_path: &Path, b_calc_sr: bool) -> io:
                 None => { return; }
             };
 
-            let osu_data = match OsuData::from_file(osu_path_str) {
+            let osu_data = match OsuDataV128::from_file(osu_path_str) {
                 Ok(d) => d,
                 Err(e) => {
                     eprintln!("Cannot get osu data: {e}");

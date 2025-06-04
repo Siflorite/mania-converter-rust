@@ -9,7 +9,7 @@ use zip::write::SimpleFileOptions;
 use zip::{CompressionMethod, ZipArchive, ZipWriter};
 use rayon::prelude::*;
 
-use crate::osu_func::{OsuData, OsuMisc, OsuTimingPoint, OsuHitObject};
+use crate::osu_func::{OsuDataLegacy, OsuMisc, OsuTimingPoint, OsuHitObjectLegacy};
 use crate::malody_func::McData;
 use crate::BeatMapInfo;
 use crate::misc::sanitize_filename;
@@ -224,7 +224,7 @@ pub fn process_mc_file(path: &Path) -> io::Result<PathBuf> {
 
 /// The function used in this crate
 fn process_mc_file_self<F>(mc_file_path: &Path, callback: F) 
-    -> io::Result<(PathBuf, OsuData)>
+    -> io::Result<(PathBuf, OsuDataLegacy)>
     where F: Fn(&Path, &Path) -> () {
     // 解析并转换 .mc 文件为 .osu 文件
     let mut mc_data = match analyze_mc_file(&mc_file_path){
@@ -306,7 +306,7 @@ fn add_files_to_zip(
     Ok(())
 }
 
-fn convert_mc_to_osu(mc_data: &McData) -> io::Result<Option<OsuData>> {
+fn convert_mc_to_osu(mc_data: &McData) -> io::Result<Option<OsuDataLegacy>> {
     // 打印解析后的数据
     // println!("{:#?}", mc_data);
 
@@ -321,7 +321,7 @@ fn convert_mc_to_osu(mc_data: &McData) -> io::Result<Option<OsuData>> {
         .unwrap_or(&String::new())
         .clone();
 
-    let mut osu_data = OsuData{
+    let mut osu_data = OsuDataLegacy{
         misc: OsuMisc { 
             audio_file_name: audio.clone(), 
             preview_time: mc_data.meta.preview.unwrap_or(-1),
@@ -330,7 +330,9 @@ fn convert_mc_to_osu(mc_data: &McData) -> io::Result<Option<OsuData>> {
             artist: mc_data.meta.song.artistorg.clone().unwrap_or(mc_data.meta.song.artist.clone()), 
             artist_unicode: mc_data.meta.song.artist.clone(), 
             creator: mc_data.meta.creator.clone(), 
-            version: mc_data.meta.version.clone(), 
+            version: mc_data.meta.version.clone(),
+            beatmap_id: 0,
+            beatmap_set_id: -1, 
             circle_size: mc_data.meta.mode_ext.column as u32,
             od: 8.0, 
             background: mc_data.meta.background.clone(),
@@ -463,9 +465,9 @@ fn convert_mc_to_osu(mc_data: &McData) -> io::Result<Option<OsuData>> {
         if let Some(_end_beat) = &item.endbeat {
             let item_beat_end = item.end_beat_to_float();
             let item_end_time = beat_to_time(item_beat_end);
-            OsuHitObject{x_pos: x_pos, time: item_time, end_time: Some(item_end_time)}
+            OsuHitObjectLegacy{x_pos: x_pos, time: item_time, end_time: Some(item_end_time)}
         } else {
-            OsuHitObject{x_pos: x_pos, time: item_time, end_time: None}
+            OsuHitObjectLegacy{x_pos: x_pos, time: item_time, end_time: None}
         }
     })
     .collect();
@@ -473,7 +475,7 @@ fn convert_mc_to_osu(mc_data: &McData) -> io::Result<Option<OsuData>> {
     Ok(Some(osu_data))
 }
 
-fn serialize_osu_data(writer: &mut BufWriter<File>, osu_data: &OsuData) -> io::Result<()> {
+fn serialize_osu_data(writer: &mut BufWriter<File>, osu_data: &OsuDataLegacy) -> io::Result<()> {
     // 构建 General 部分
     write!(writer, "osu file format v14\n\n[General]\n")?;
     write!(writer, "AudioFilename: {}\n", osu_data.misc.audio_file_name)?;
@@ -491,7 +493,7 @@ fn serialize_osu_data(writer: &mut BufWriter<File>, osu_data: &OsuData) -> io::R
     write!(writer, "ArtistUnicode:{}\n", osu_data.misc.artist_unicode)?;
     write!(writer, "Creator:{}\n", osu_data.misc.creator)?;
     write!(writer, "Version:{}\n", osu_data.misc.version)?;
-    write!(writer, "Source:\nTags:\nBeatmapID:0\nBeatmapSetID:-1\n\n")?;
+    write!(writer, "Source:\nTags:\nBeatmapID:{}\nBeatmapSetID:{}\n\n", osu_data.misc.beatmap_id, osu_data.misc.beatmap_set_id)?;
 
     // 构建 Difficulty 部分
     write!(writer, "[Difficulty]\n")?;
