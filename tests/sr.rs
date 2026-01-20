@@ -3,6 +3,7 @@ use mania_converter::{graphx::generate_info_abstract, malody_func::process_whole
 use std::io::{self, Write};
 use std::path::PathBuf;
 
+#[test]
 fn main() -> io::Result<()> {
     let file = "./test_stuff/zombie_u.osu";
     let data = mania_converter::osu_func::OsuDataV128::from_file(file)?;
