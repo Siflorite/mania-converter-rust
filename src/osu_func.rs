@@ -1,7 +1,7 @@
 pub mod calc_sr;
 mod helper_functions;
 pub mod osz_func;
-// pub mod osz2mcz;
+pub mod osz2mcz;
 
 pub use calc_sr::{calculate_from_data, calculate_from_file};
 use core::f64;
@@ -11,6 +11,7 @@ use std::fs::File;
 use std::io::{self, BufRead, BufReader, BufWriter, Write};
 
 use crate::BeatMapInfo;
+use crate::malody_func::{self, McData, Meta, Beat, Note};
 
 #[derive(Debug, Clone)]
 pub struct OsuMisc {
@@ -591,6 +592,164 @@ impl From<OsuHitObjectLegacy> for OsuHitObjectV128 {
             x_pos: v.x_pos,
             time: v.time as f64,
             end_time: v.end_time.map(|t| t as f64),
+        }
+    }
+}
+
+impl OsuDataLegacy {
+    pub fn to_mc_data(&self) -> McData {
+        // 轨道数
+        let column_num = self.misc.circle_size;
+
+        // malody的初始时间点可以认为是osu往回退第一个负数时间
+        let original_timings = self.timings.iter().filter(|t| t.is_timing).collect::<Vec<_>>();
+        let original_offset = original_timings.first().unwrap().time;
+        let original_interval = original_timings.first().unwrap().val;
+        let offset_beats = if original_offset > 0.0 {
+            (original_offset / original_interval).ceil()
+        } else {
+            0.0
+        };
+        let offset = offset_beats * original_interval;
+
+        let preview = self.misc.preview_time - offset as i32;
+
+        let song = malody_func::Song {
+            title: self.misc.title.clone(),
+            artist: self.misc.artist.clone(),
+            titleorg: Some(self.misc.title_unicode.clone()),
+            artistorg: Some(self.misc.artist_unicode.clone()),
+        };
+
+        let mode_ext = malody_func::ModeExt {
+            column: column_num as u8,
+        };
+
+        let mc_meta = Meta {
+            creator: self.misc.creator.clone(),
+            background: self.misc.background.clone(),
+            version: self.misc.version.clone(),
+            preview: Some(preview),
+            mode: 0, 
+            song,
+            mode_ext,
+        };
+
+        let timings = original_timings
+            .iter()
+            .enumerate()
+            .map(|(i, t)| {
+                OsuTimingPoint {
+                    time: if i == 0 {t.time - offset.floor()} else {t.time}, // 只需要调整第一根时间线的位置
+                    val: t.val,
+                    is_timing: t.is_timing,
+                }
+            })
+            .collect::<Vec<_>>();
+
+        let beat_counts = timings
+            .windows(2)
+            .map(|t| {
+                let start_time = t[0].time;
+                let interval = t[0].val;
+                let end_time = t[1].time;
+                let val = (end_time - start_time) / interval;
+                Beat::from_float(val)
+            }).collect::<Vec<_>>();
+
+        let mut beat_counts_fold = beat_counts
+            .iter()
+            .scan(Beat::default(), |sum, &x| {
+                *sum += x;
+                Some(*sum)
+            })
+            .collect::<Vec<_>>();
+        beat_counts_fold.insert(0, Beat::default());
+
+        let beats_grid = beat_counts_fold
+            .iter()
+            .enumerate()
+            .map(|(i, b)| {
+                malody_func::Timing {
+                    beat: b.to_vec(),
+                    bpm: 60000f64 / timings[i].val,
+                }
+            })
+            .collect::<Vec<_>>();
+
+        // 顺便把效果也转换到mc
+        let time_to_beat = |time: f64| -> Beat {
+            let timing_index = timings.partition_point(|t| t.time < time).saturating_sub(1);
+            let timing = &timings[timing_index];
+            let beats = beat_counts_fold[timing_index];
+            beats + Beat::from_float((time - timing.time) / timing.val)
+        };
+
+        let effects_grid = self.timings
+            .iter()
+            .filter(|t| !t.is_timing)
+            .map(|t| {
+                let effect_time = t.time;
+                let beat = time_to_beat(effect_time);
+                malody_func::Effect {
+                    beat: beat.to_vec(),
+                    scroll: -100f64 / t.val,
+                }
+            })
+            .collect::<Vec<_>>();
+        let mc_effects = if effects_grid.is_empty() {
+            None
+        } else {
+            Some(effects_grid)
+        };
+
+        let to_grid = |note: &OsuHitObjectLegacy| -> Note {
+            let start_time = note.time;
+            let start_grid = time_to_beat(start_time as f64);
+
+            let end_grid = if let Some(end_time) = note.end_time {
+                let end_grid = time_to_beat(end_time as f64);
+                Some(end_grid)
+            } else {
+                None
+            };
+
+            let column = note.x_pos * column_num / 512;
+
+            Note { 
+                beat: start_grid.to_vec(), 
+                endbeat: end_grid.map(|e| e.to_vec()),
+                column: Some(column as u8), 
+                sound: None, 
+                vol: None, 
+                offset: None, 
+                r#type: None 
+            }
+        };
+
+        let mut new_notes = self.notes
+            .iter()
+            .enumerate()
+            .map(|(_i, n)| to_grid(n))
+            .collect::<Vec<_>>();
+
+        // Malody最后一个音符是开始时间信息
+        new_notes.push(
+            Note { 
+                beat: Vec::from([0,0,1]), 
+                endbeat: None, 
+                column: None, 
+                sound: Some(self.misc.audio_file_name.clone()), 
+                vol: Some(100), 
+                offset: Some(timings[0].time.abs() as i32), 
+                r#type: Some(1)
+            });
+
+        McData {
+            meta: mc_meta,
+            time: beats_grid,
+            effect: mc_effects,
+            note: new_notes,
         }
     }
 }
