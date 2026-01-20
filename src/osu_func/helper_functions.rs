@@ -3,8 +3,8 @@
 fn cumulative_sum(x: &[f64], f: &[f64]) -> Vec<f64> {
     let mut res = vec![0.0; x.len()];
     for i in 1..x.len() {
-        let dx = x[i] - x[i-1];
-        res[i] = res[i-1] + f[i-1] * dx;
+        let dx = x[i] - x[i - 1];
+        res[i] = res[i - 1] + f[i - 1] * dx;
     }
     res
 }
@@ -14,11 +14,8 @@ fn query_cum_sum(q: f64, x: &[f64], res: &[f64], f: &[f64]) -> f64 {
     if x.is_empty() {
         return 0.0;
     }
-    
-    match (
-        q <= x[0],
-        q >= *x.last().unwrap()
-    ) {
+
+    match (q <= x[0], q >= *x.last().unwrap()) {
         (true, _) => 0.0,
         (_, true) => *res.last().unwrap(),
         _ => {
@@ -35,7 +32,13 @@ pub(super) enum SmoothMode {
 }
 
 // smoothOnCorners 滑动窗口平滑 (对应Python的smooth_on_corners)
-pub(super) fn smooth_on_corners(x: &[f64], f: &[f64], window: f64, scale: f64, mode: SmoothMode) -> Vec<f64> {
+pub(super) fn smooth_on_corners(
+    x: &[f64],
+    f: &[f64],
+    window: f64,
+    scale: f64,
+    mode: SmoothMode,
+) -> Vec<f64> {
     let res = cumulative_sum(x, f);
     let mut g = vec![0.0; x.len()];
 
@@ -55,7 +58,7 @@ pub(super) fn smooth_on_corners(x: &[f64], f: &[f64], window: f64, scale: f64, m
                 } else {
                     0.0
                 }
-            },
+            }
             SmoothMode::Sum => scale * val,
         };
     }
@@ -64,30 +67,36 @@ pub(super) fn smooth_on_corners(x: &[f64], f: &[f64], window: f64, scale: f64, m
 
 // interpValues 线性插值 (对应Python的interp_values)
 pub(super) fn interp_values(new_x: &[f64], old_x: &[f64], old_vals: &[f64]) -> Vec<f64> {
-    new_x.iter().map(|&x| {
-        let idx = old_x.partition_point(|&v| v < x);
-        match idx {
-            0 => old_vals[0],
-            n if n >= old_x.len() => *old_vals.last().unwrap(),
-            _ => {
-                let x0 = old_x[idx-1];
-                let x1 = old_x[idx];
-                let y0 = old_vals[idx-1];
-                let y1 = old_vals[idx];
-                let t = (x - x0) / (x1 - x0);
-                y0 + t * (y1 - y0)
+    new_x
+        .iter()
+        .map(|&x| {
+            let idx = old_x.partition_point(|&v| v < x);
+            match idx {
+                0 => old_vals[0],
+                n if n >= old_x.len() => *old_vals.last().unwrap(),
+                _ => {
+                    let x0 = old_x[idx - 1];
+                    let x1 = old_x[idx];
+                    let y0 = old_vals[idx - 1];
+                    let y1 = old_vals[idx];
+                    let t = (x - x0) / (x1 - x0);
+                    y0 + t * (y1 - y0)
+                }
             }
-        }
-    }).collect()
+        })
+        .collect()
 }
 
 // stepInterp 阶梯插值 (对应Python的step_interp)
 pub(super) fn step_interp(new_x: &[f64], old_x: &[f64], old_vals: &[f64]) -> Vec<f64> {
-    new_x.iter().map(|&x| {
-        let idx  = old_x.partition_point(|&v| v <= x);
-        let idx = idx.saturating_sub(1).min(old_vals.len() - 1);
-        old_vals[idx]
-    }).collect()
+    new_x
+        .iter()
+        .map(|&x| {
+            let idx = old_x.partition_point(|&v| v <= x);
+            let idx = idx.saturating_sub(1).min(old_vals.len() - 1);
+            old_vals[idx]
+        })
+        .collect()
 }
 
 pub(super) fn rescale_high(sr: f64) -> f64 {
@@ -98,7 +107,11 @@ pub(super) fn rescale_high(sr: f64) -> f64 {
     }
 }
 
-pub(super) fn find_next_note_in_column(note: (u32, u32, i32), times: &[u32], note_seq_by_column: &[Vec<(u32, u32, i32)>]) -> (u32, u32, i32) {
+pub(super) fn find_next_note_in_column(
+    note: (u32, u32, i32),
+    times: &[u32],
+    note_seq_by_column: &[Vec<(u32, u32, i32)>],
+) -> (u32, u32, i32) {
     let (k, h, _) = note;
     let column_notes = note_seq_by_column.get(k as usize).unwrap();
     // 在当前列的时间序列中二分查找

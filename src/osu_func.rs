@@ -1,13 +1,14 @@
 pub mod calc_sr;
-pub mod osz_func;
 mod helper_functions;
+pub mod osz_func;
 // pub mod osz2mcz;
 
-use core::f64;
-use std::fs::File;
-use std::io::{self, BufRead, BufReader};
 pub use calc_sr::{calculate_from_data, calculate_from_file};
+use core::f64;
 pub use osz_func::{parse_osz_file, parse_osz_postprocess, parse_whole_dir_osz};
+use rayon::prelude::*;
+use std::fs::File;
+use std::io::{self, BufRead, BufReader, BufWriter, Write};
 
 use crate::BeatMapInfo;
 
@@ -31,15 +32,19 @@ pub struct OsuMisc {
 #[derive(Debug, Clone)]
 pub struct OsuTimingPoint {
     pub time: f64,
-    pub val: f64, 
+    pub val: f64,
     pub is_timing: bool,
 }
 
 pub trait HitObject: Sized {
     type TimeType: PartialOrd + Copy + Into<f64>;
     fn parse(line: &str) -> Option<Self>;
+
     fn to_legacy(self) -> OsuHitObjectLegacy;
     fn to_v128(self) -> OsuHitObjectV128;
+
+    fn version() -> &'static str;
+    fn get_x_pos(&self) -> u32;
     fn get_time(&self) -> Self::TimeType;
     fn get_end_time(&self) -> Option<Self::TimeType>;
 }
@@ -54,6 +59,10 @@ pub struct OsuHitObjectLegacy {
 impl HitObject for OsuHitObjectLegacy {
     type TimeType = u32;
 
+    fn version() -> &'static str {
+        "v14"
+    }
+
     fn parse(line: &str) -> Option<Self> {
         let parts: Vec<&str> = line.split(',').collect();
         if parts.len() < 3 {
@@ -64,10 +73,14 @@ impl HitObject for OsuHitObjectLegacy {
         let time = parts[2].parse().ok()?;
         let end_time = match parts[3] {
             "128" => parts[5].split(':').next().and_then(|s| s.parse().ok()),
-            _ => None
+            _ => None,
         };
 
-        Some(Self { x_pos, time, end_time })
+        Some(Self {
+            x_pos,
+            time,
+            end_time,
+        })
     }
 
     fn to_legacy(self) -> OsuHitObjectLegacy {
@@ -82,6 +95,10 @@ impl HitObject for OsuHitObjectLegacy {
         }
     }
 
+    fn get_x_pos(&self) -> u32 {
+        self.x_pos
+    }
+
     fn get_time(&self) -> Self::TimeType {
         self.time
     }
@@ -89,7 +106,7 @@ impl HitObject for OsuHitObjectLegacy {
     fn get_end_time(&self) -> Option<Self::TimeType> {
         self.end_time
     }
-}   
+}
 
 #[derive(Debug, Clone)]
 pub struct OsuHitObjectV128 {
@@ -100,7 +117,11 @@ pub struct OsuHitObjectV128 {
 
 impl HitObject for OsuHitObjectV128 {
     type TimeType = f64;
-    
+
+    fn version() -> &'static str {
+        "v128"
+    }
+
     fn parse(line: &str) -> Option<Self> {
         let parts: Vec<&str> = line.split(',').collect();
         if parts.len() < 3 {
@@ -111,10 +132,14 @@ impl HitObject for OsuHitObjectV128 {
         let time = parts[2].parse().ok()?;
         let end_time = match parts[3] {
             "128" => parts[5].split(':').next().and_then(|s| s.parse().ok()),
-            _ => None
+            _ => None,
         };
 
-        Some(Self { x_pos, time, end_time })
+        Some(Self {
+            x_pos,
+            time,
+            end_time,
+        })
     }
 
     fn to_legacy(self) -> OsuHitObjectLegacy {
@@ -127,6 +152,10 @@ impl HitObject for OsuHitObjectV128 {
 
     fn to_v128(self) -> OsuHitObjectV128 {
         self
+    }
+
+    fn get_x_pos(&self) -> u32 {
+        self.x_pos
     }
 
     fn get_time(&self) -> Self::TimeType {
@@ -170,9 +199,9 @@ impl From<&str> for Section {
     }
 }
 
-impl<H> OsuData<H> 
-where 
-    H: HitObject + Clone
+impl<H> OsuData<H>
+where
+    H: HitObject + Clone,
 {
     fn parse_key_value(line: &str) -> Option<(&str, &str)> {
         line.split_once(':').map(|(k, v)| (k.trim(), v.trim()))
@@ -188,7 +217,11 @@ where
         let val = parts[1].parse().ok()?;
         let is_timing = parts.get(6).map_or(true, |&x| x == "1");
 
-        Some(OsuTimingPoint { time, val, is_timing })
+        Some(OsuTimingPoint {
+            time,
+            val,
+            is_timing,
+        })
     }
 
     // 转换到其他版本
@@ -203,21 +236,27 @@ where
         }
     }
 
-    pub fn to_legacy(self) -> OsuDataLegacy where H: HitObject {
+    pub fn to_legacy(self) -> OsuDataLegacy
+    where
+        H: HitObject,
+    {
         OsuDataLegacy {
             misc: self.misc,
             timings: self.timings,
             notes: self.notes.into_iter().map(H::to_legacy).collect(),
         }
-    } 
+    }
 
-    pub fn to_v128(self) -> OsuDataV128 where H: HitObject {
+    pub fn to_v128(self) -> OsuDataV128
+    where
+        H: HitObject,
+    {
         OsuDataV128 {
             misc: self.misc,
             timings: self.timings,
-            notes: self.notes.into_iter().map(H::to_v128).collect()
+            notes: self.notes.into_iter().map(H::to_v128).collect(),
         }
-    }        
+    }
 
     pub fn from_file(file_path: &str) -> Result<Self, io::Error> {
         let file = File::open(file_path)?;
@@ -261,12 +300,15 @@ where
                         match key {
                             "AudioFilename" => misc.audio_file_name = value.to_string(),
                             "PreviewTime" => misc.preview_time = value.parse().unwrap_or(0),
-                            "Mode" =>  {
+                            "Mode" => {
                                 let v = value.parse().unwrap_or(0);
                                 if v != 3 {
-                                    return Err(io::Error::new(io::ErrorKind::InvalidInput, "This program only supports mania mode!"));
+                                    return Err(io::Error::new(
+                                        io::ErrorKind::InvalidInput,
+                                        "This program only supports mania mode!",
+                                    ));
                                 }
-                            },
+                            }
                             "Title" => misc.title = value.to_string(),
                             "TitleUnicode" => misc.title_unicode = value.to_string(),
                             "Artist" => misc.artist = value.to_string(),
@@ -278,7 +320,7 @@ where
                             "CircleSize" => {
                                 let cs_float: f64 = value.parse().unwrap_or(0.0);
                                 misc.circle_size = cs_float as u32;
-                            },
+                            }
                             "OverallDifficulty" => misc.od = value.parse().unwrap_or(0.0),
                             _ => {}
                         }
@@ -307,28 +349,153 @@ where
             }
         }
 
-        Ok(Self { misc, timings, notes})
+        Ok(Self {
+            misc,
+            timings,
+            notes,
+        })
+    }
+
+    pub fn to_file(&self, file_path: &str) -> io::Result<()>
+    where
+        H: Send + Sync,
+    {
+        let osu_file = File::create(file_path)?;
+        let mut writer = BufWriter::new(osu_file);
+
+        // 构建 General 部分
+        write!(writer, "osu file format {}\n\n[General]\n", H::version())?;
+        write!(writer, "AudioFilename: {}\n", self.misc.audio_file_name)?;
+        write!(
+            writer,
+            "AudioLeadIn: 0\nPreviewTime: {}\nCountdown: 0\nSampleSet: Soft\n",
+            self.misc.preview_time
+        )?;
+        write!(writer, "StackLeniency: 0.7\nMode: 3\nLetterboxInBreaks: 0\nSpecialStyle: 0\nWidescreenStoryboard: 1\n\n")?;
+
+        // 构建 Editor 部分
+        write!(
+            writer,
+            "[Editor]\nDistanceSpacing: 1\nBeatDivisor: 8\nGridSize: 4\nTimelineZoom: 2\n\n"
+        )?;
+
+        // 构建 Metadata 部分
+        write!(writer, "[Metadata]\n")?;
+        write!(writer, "Title:{}\n", self.misc.title)?;
+        write!(writer, "TitleUnicode:{}\n", self.misc.title_unicode)?;
+        write!(writer, "Artist:{}\n", self.misc.artist)?;
+        write!(writer, "ArtistUnicode:{}\n", self.misc.artist_unicode)?;
+        write!(writer, "Creator:{}\n", self.misc.creator)?;
+        write!(writer, "Version:{}\n", self.misc.version)?;
+        write!(
+            writer,
+            "Source:\nTags:\nBeatmapID:{}\nBeatmapSetID:{}\n\n",
+            self.misc.beatmap_id, self.misc.beatmap_set_id
+        )?;
+
+        // 构建 Difficulty 部分
+        write!(writer, "[Difficulty]\n")?;
+        let od_str = if self.misc.od.trunc() == self.misc.od {
+            format!("{:.0}", self.misc.od)
+        } else {
+            format!("{:.1}", self.misc.od)
+        };
+        write!(writer, "HPDrainRate:8\nCircleSize:{}\nOverallDifficulty:{}\nApproachRate:5\nSliderMultiplier:1.4\nSliderTickRate:1\n\n", self.misc.circle_size, od_str)?;
+
+        // 构建 Events 部分
+        write!(writer, "[Events]\n//Background and Video events\n")?;
+        if !self.misc.background.is_empty() {
+            write!(writer, "0,0,\"{}\",0,0\n", self.misc.background)?;
+        }
+        write!(
+            writer,
+            "//Break Periods\n//Storyboard Layer 0 (Background)\n"
+        )?;
+        write!(
+            writer,
+            "//Storyboard Layer 1 (Fail)\n//Storyboard Layer 2 (Pass)\n"
+        )?;
+        write!(
+            writer,
+            "//Storyboard Layer 3 (Foreground)\n//Storyboard Layer 4 (Overlay)\n"
+        )?;
+        write!(writer, "//Storyboard Sound Samples\n\n")?;
+
+        // 构建 TimingPoints 部分
+        let timing_points: Vec<_> = self
+            .timings
+            .par_iter()
+            .map(|tp| format!("{},{},4,2,0,10,{},0", tp.time, tp.val, tp.is_timing as u8))
+            .collect();
+
+        // 构建 HitObjects 部分
+        let hit_objects: Vec<_> = self
+            .notes
+            .par_iter()
+            .map(|ho| {
+                let h = ho.get_time();
+                let h_f: f64 = h.into();
+                let h_str = if h_f.fract() < 1e-12 {
+                    format!("{:.0}", h_f)
+                } else {
+                    format!("{:.12}", h_f)
+                };
+                if let Some(t) = ho.get_end_time() {
+                    let t_f: f64 = t.into();
+                    let t_str = if t_f.fract() < 1e-12 {
+                        format!("{:.0}", t_f)
+                    } else {
+                        format!("{:.12}", t_f)
+                    };
+                    format!("{},192,{},128,0,{}:0:0:0:0:", ho.get_x_pos(), h_str, t_str)
+                } else {
+                    format!("{},192,{},1,0,0:0:0:0:", ho.get_x_pos(), h_str)
+                }
+            })
+            .collect();
+
+        write!(writer, "[TimingPoints]\n")?;
+        writer.write_all(timing_points.join("\n").as_bytes())?;
+        write!(writer, "\n\n[HitObjects]\n")?;
+        writer.write_all(hit_objects.join("\n").as_bytes())?;
+
+        Ok(())
     }
 
     fn get_bpm_range(&self) -> (f64, Option<f64>) {
         // FilterMap will not include None values
-        let bpm_list: Vec<f64> = self.timings
-            .iter().filter_map(|t| {
-                match t.is_timing {
-                    true => Some(60000.0 / t.val),
-                    false => None
-                }
-            }).collect();
-        if bpm_list.is_empty() { return (0.0, None) }
-        let min_bpm = *bpm_list.iter().min_by(|&x, &y| x.partial_cmp(y).unwrap()).unwrap();
-        let max_bpm: Option<f64> = if bpm_list.len() == 1 {None} else {
-            Some(*bpm_list.iter().max_by(|&x, &y| x.partial_cmp(y).unwrap()).unwrap())
+        let bpm_list: Vec<f64> = self
+            .timings
+            .iter()
+            .filter_map(|t| match t.is_timing {
+                true => Some(60000.0 / t.val),
+                false => None,
+            })
+            .collect();
+        if bpm_list.is_empty() {
+            return (0.0, None);
+        }
+        let min_bpm = *bpm_list
+            .iter()
+            .min_by(|&x, &y| x.partial_cmp(y).unwrap())
+            .unwrap();
+        let max_bpm: Option<f64> = if bpm_list.len() == 1 {
+            None
+        } else {
+            Some(
+                *bpm_list
+                    .iter()
+                    .max_by(|&x, &y| x.partial_cmp(y).unwrap())
+                    .unwrap(),
+            )
         };
         (min_bpm, max_bpm)
     }
 
     fn get_length(&self) -> u32 {
-        let (min_time, max_time) = self.notes.iter()
+        let (min_time, max_time) = self
+            .notes
+            .iter()
             .filter_map(|n| {
                 let start = n.get_time().into();
                 let end = n.get_end_time().map(|t| t.into()).unwrap_or(start);
@@ -347,9 +514,11 @@ where
         let length = self.get_length();
 
         let note_count = self.notes.len() as u32;
-        let ln_count = self.notes.iter().filter(
-            |&n| n.get_end_time().is_some()
-        ).count() as u32;
+        let ln_count = self
+            .notes
+            .iter()
+            .filter(|&n| n.get_end_time().is_some())
+            .count() as u32;
 
         BeatMapInfo {
             title: self.misc.title.clone(),
@@ -364,16 +533,17 @@ where
             min_bpm: min_bpm,
             max_bpm: max_bpm,
             length: length,
-            sr: 
-            if b_calc_sr {
+            sr: if b_calc_sr {
                 match calculate_from_data(&self.clone().to_legacy(), 1.0) {
                     Ok(sr) => Some(sr.max(0.0)),
-                    Err(_) => None
+                    Err(_) => None,
                 }
-            } else { None },
+            } else {
+                None
+            },
             note_count: note_count - ln_count,
             ln_count: ln_count,
-            bg_name: Some(self.misc.background.clone())
+            bg_name: Some(self.misc.background.clone()),
         }
     }
 }

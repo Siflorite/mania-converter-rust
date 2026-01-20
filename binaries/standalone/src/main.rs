@@ -5,7 +5,7 @@ use std::io::{self, Write};
 fn main() -> io::Result<()> {
     let mode = read_bool_input(
         "Please choose mode (y for mcz converter, n for osz info card): ",
-        true // 默认值
+        true, // 默认值
     )?;
 
     if mode {
@@ -15,13 +15,13 @@ fn main() -> io::Result<()> {
         // 获取是否计算 SR
         let calc_sr = read_bool_input(
             "Calculate star rating for beatmaps? (y/n): ",
-            true // 默认值
+            true, // 默认值
         )?;
 
         // 获取是否打印结果
         let print_results = read_bool_input(
             "Show conversion summary? (y/n): ",
-            true // 默认值
+            true, // 默认值
         )?;
 
         process_whole_dir_mcz("", calc_sr, print_results)?;
@@ -32,7 +32,9 @@ fn main() -> io::Result<()> {
     } else {
         let locations = parse_whole_dir_osz("")?;
         println!("\nInfo cards generated successfully! Locations:");
-        for p in locations { println!("{p}") }
+        for p in locations {
+            println!("{p}")
+        }
         println!("\nPress Enter to exit...");
         io::stdin().read_line(&mut String::new())?;
     }
@@ -64,7 +66,10 @@ fn read_bool_input(prompt: &str, default: bool) -> io::Result<bool> {
             _ => {
                 retry_count += 1;
                 if retry_count >= MAX_RETRIES {
-                    println!("Invalid input after {} attempts. Using default: {}", MAX_RETRIES, default);
+                    println!(
+                        "Invalid input after {} attempts. Using default: {}",
+                        MAX_RETRIES, default
+                    );
                     return Ok(default);
                 }
                 println!("Please enter 'y' or 'n' (or leave empty for default)");

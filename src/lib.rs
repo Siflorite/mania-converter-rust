@@ -1,7 +1,7 @@
-pub mod malody_func;
-pub mod osu_func;
 pub mod graphx;
+pub mod malody_func;
 pub mod misc;
+pub mod osu_func;
 
 use std::fmt;
 
@@ -30,24 +30,32 @@ pub struct BeatMapInfo {
 impl fmt::Display for BeatMapInfo {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let title_unicode_str = self.title_unicode.as_ref().map_or("".into(), |v| v.clone());
-        let artist_unicode_str = self.artist_unicode.as_ref().map_or("".into(), |v| v.clone());
+        let artist_unicode_str = self
+            .artist_unicode
+            .as_ref()
+            .map_or("".into(), |v| v.clone());
         let title_str = match title_unicode_str.is_empty() {
             true => self.title.clone(),
-            false => format!("{} ({})", self.title, title_unicode_str)
+            false => format!("{} ({})", self.title, title_unicode_str),
         };
         let artist_str = match artist_unicode_str.is_empty() {
             true => self.artist.clone(),
-            false => format!("{} ({})", self.artist, artist_unicode_str)
+            false => format!("{} ({})", self.artist, artist_unicode_str),
         };
         let bpm_str = match self.max_bpm {
             Some(val) => format!("{}-{}", self.min_bpm, val),
-            None => format!("{}", self.min_bpm)
+            None => format!("{}", self.min_bpm),
         };
-        let length_str = format!("{}:{:02}.{:03}", self.length / 60000, (self.length % 60000) / 1000, self.length % 1000);
-        
+        let length_str = format!(
+            "{}:{:02}.{:03}",
+            self.length / 60000,
+            (self.length % 60000) / 1000,
+            self.length % 1000
+        );
+
         let sr_str = self.sr.map_or("N/A".into(), |v| format!("{:.4}", v));
-        let ln_ratio = self.ln_count as f64 /  (self.ln_count + self.note_count) as f64;
-        
+        let ln_ratio = self.ln_count as f64 / (self.ln_count + self.note_count) as f64;
+
         write!(
             f,
             "Title: {}\nArtist: {}\nCreator: {}\nVersion: {}\nBeatmapID: {}\nBeatmapSetID: {}\nColumns: {}\nBPM: {}\nLength: {}\nSR: {}\nLN_Ratio: {:.3}",

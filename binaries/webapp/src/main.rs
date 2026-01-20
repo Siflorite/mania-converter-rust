@@ -1,14 +1,14 @@
-use actix_web::{web, App, HttpRequest, HttpResponse, HttpServer, Responder, get, post};
-use actix_multipart::Multipart;
 use actix_files::NamedFile;
+use actix_multipart::Multipart;
+use actix_web::{get, post, web, App, HttpRequest, HttpResponse, HttpServer, Responder};
 use futures_util::stream::StreamExt as _;
+use lazy_static::lazy_static;
+use std::collections::HashMap;
+use std::env;
 use std::fs::{self, File};
 use std::io::Write;
-use std::env;
-use uuid::Uuid;
 use std::sync::Mutex;
-use std::collections::HashMap;
-use lazy_static::lazy_static;
+use uuid::Uuid;
 
 use mania_converter::malody_func::process_mcz_file;
 
@@ -61,12 +61,15 @@ pub async fn upload_mcz(mut payload: Multipart) -> impl Responder {
         if let Some(original_filename) = content_disposition.get_filename() {
             // 将 UUID 文件名和原始文件名存入映射
             let unique_filename = generate_unique_filename("mcz");
-            FILE_NAME_MAP.lock().unwrap().insert(unique_filename.clone(), original_filename.to_string());
+            FILE_NAME_MAP
+                .lock()
+                .unwrap()
+                .insert(unique_filename.clone(), original_filename.to_string());
             {
-            let map = FILE_NAME_MAP.lock().unwrap();
-            println!("HashMap content: {:?}", *map);
+                let map = FILE_NAME_MAP.lock().unwrap();
+                println!("HashMap content: {:?}", *map);
             }
-           // 保存上传的文件到临时目录
+            // 保存上传的文件到临时目录
             let filepath = temp_dir_path.join(unique_filename);
             println!("File uploading: {}", filepath.display());
             let mut f = File::create(&filepath).unwrap();
@@ -75,7 +78,7 @@ pub async fn upload_mcz(mut payload: Multipart) -> impl Responder {
                 f.write_all(&data).unwrap();
             }
             println!("File uploaded: {}", filepath.display());
-           
+
             // 检查扩展名是否为 .mcz
             if filepath.extension() == Some(std::ffi::OsStr::new("mcz")) {
                 // 转换为 .osz 文件
@@ -83,7 +86,12 @@ pub async fn upload_mcz(mut payload: Multipart) -> impl Responder {
                     return HttpResponse::InternalServerError().body(format!("Error: {:?}", e));
                 }
                 // 返回跳转到下载页面的 HTML
-                let osz_filename = filepath.with_extension("osz").file_name().unwrap().to_string_lossy().to_string();
+                let osz_filename = filepath
+                    .with_extension("osz")
+                    .file_name()
+                    .unwrap()
+                    .to_string_lossy()
+                    .to_string();
                 let download_url = format!("/download/{}", osz_filename);
                 let html = format!(
                     r#"
@@ -133,7 +141,11 @@ pub async fn download_osz(filename: web::Path<String>, req: HttpRequest) -> impl
                 // 将文件名的后缀从 mcz 修改为 osz
                 let mut original_name = std::path::PathBuf::from(name.clone());
                 original_name.set_extension("osz"); // 修改扩展名为 osz
-                original_name.file_name().unwrap().to_string_lossy().to_string() // 转换为字符串
+                original_name
+                    .file_name()
+                    .unwrap()
+                    .to_string_lossy()
+                    .to_string() // 转换为字符串
             }
             None => filename.clone(), // 如果找不到映射，则使用生成的 UUID 文件名
         }
@@ -141,14 +153,14 @@ pub async fn download_osz(filename: web::Path<String>, req: HttpRequest) -> impl
     match NamedFile::open(&file_path) {
         Ok(named_file) => {
             // 设置 Content-Disposition 头，指定下载文件名
-            let response = named_file
-                .use_last_modified(true)
-                .set_content_disposition(actix_web::http::header::ContentDisposition {
+            let response = named_file.use_last_modified(true).set_content_disposition(
+                actix_web::http::header::ContentDisposition {
                     disposition: actix_web::http::header::DispositionType::Attachment,
                     parameters: vec![actix_web::http::header::DispositionParam::Filename(
                         original_filename.clone(),
                     )],
-                });
+                },
+            );
 
             // 异步删除文件（.osz 和 .mcz 文件）
             let file_path_clone = file_path.clone();
@@ -170,7 +182,7 @@ pub async fn download_osz(filename: web::Path<String>, req: HttpRequest) -> impl
             response.into_response(&req)
         }
         Err(_) => HttpResponse::InternalServerError().body("Error opening file"),
-    }       
+    }
 }
 
 // 启动 Web 服务
@@ -181,7 +193,7 @@ pub async fn main() -> std::io::Result<()> {
             web::scope("")
                 .service(upload_page)
                 .service(upload_mcz)
-                .service(download_osz)
+                .service(download_osz),
         )
     })
     .bind(("0.0.0.0", 80))?

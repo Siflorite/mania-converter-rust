@@ -1,0 +1,112 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="350" viewBox="0 0 1200 350">
+    <defs>
+        <!-- 定义滤镜：右侧背景淡化 -->
+        <filter id="blurAndFade">
+            <feGaussianBlur stdDeviation="8" />
+            <feComponentTransfer>
+                <feFuncA type="linear" slope="0.5" />
+            </feComponentTransfer>
+        </filter>
+        <clipPath id="globalClip">
+            <rect x="0" y="0" width="1200" height="300" rx="20" ry="20"/>
+        </clipPath>
+        <clipPath id="leftClip">
+            <rect x="0" y="0" width="300" height="300" rx="20" ry="20"/>
+        </clipPath>
+        <clipPath id="downClip">
+            <rect x="0" y="0" width="1200" height="50" rx="20" ry="20"/>
+        </clipPath>
+    </defs>
+    <rect x="0" y="0" width="1200" height="350" rx="20" ry="20" fill="black"/>
+    <!-- 单个卡片模板 -->
+    <g clip-path="url(#globalClip)">
+        <!-- 右侧 900x300 区域 -->
+        <g transform="translate(300, 0)">
+            <!-- 背景缩放裁剪 -->
+            <image
+                href="{{bg_image}}"
+                width="920" height="300"
+                x="-20"
+                filter="url(#blurAndFade)"
+                preserveAspectRatio="xMidYMid slice"
+            />
+            
+            <!-- 文字组 -->
+            <g transform="translate(30, 40)" font-size="28" font-weight="500" font-family="Source Han Sans SC" fill="white">
+                <!-- 标题 -->
+                <text class="title" stroke="#000" paint-order="stroke">
+                    <tspan font-size="20"  stroke-width="0.5px">{{title_ascii}}</tspan>
+                    <tspan x="0" y="40" font-size="42" font-weight="700" stroke-width="1px">{{title}}</tspan>
+                    <tspan x="0" y="72" font-size="14" fill="#ccc" stroke-width="0.4px">{{artist_ascii}}</tspan>
+                    <tspan x="0" y="96" font-size="24" fill="#ccc" stroke-width="0.5px">{{artist}} // {{creator}}</tspan>
+                    <tspan x="0" dy="45" font-size="20" stroke-width="0.5px">{{version}}</tspan>
+                </text>
+
+                <!-- 元数据 -->
+                <g transform="translate(0, 186)" font-size="24" paint-order="stroke">
+                    <g transform="translate(0, 0)">
+                        <text>
+                        <tspan font-family="Noto Color Emoji">🎹</tspan>
+                        <tspan stroke-width="1px" stroke="#000" font-family="Source Han Sans">{{column_count}}K</tspan>
+                        </text>
+                    </g>
+                    <g transform="translate(85, 0)">
+                        <text font-family="Noto Color Emoji">🎵</text>
+                        <g transform="translate(40, 0)">
+                            <text font-family="Source Han Sans" stroke-width="1px" stroke="#000">{{bpm}}</text>
+                        </g>
+                    </g>
+                    <g transform="translate({{len_pos}}, 0)">
+                        <text>
+                        <tspan font-family="Noto Color Emoji">⏱️</tspan>
+                        <tspan stroke-width="1px" stroke="#000" font-family="Source Han Sans">{{length}}</tspan>
+                        </text>
+                    
+                        <g transform="translate(120, 0)">
+                            <rect x="-8" y="-28" width="110" height="40" fill="{{sr_gradient}}" rx="20" ry="20"/>
+                            <text stroke-width="0.7px" stroke="#000">
+                            <tspan font-family="Source Han Sans">★ {{sr}}</tspan>
+                            </text>
+                        </g>
+                    </g>
+                    <g transform="translate(0, 40)">
+                        <text>
+                        <tspan font-family="Noto Color Emoji">🍚</tspan>
+                        <tspan stroke-width="1px" stroke="#000" font-family="Source Han Sans">{{note_str}}+</tspan>
+                        <tspan font-family="Noto Color Emoji">🍜</tspan>
+                        <tspan stroke-width="1px" stroke="#000" font-family="Source Han Sans">{{ln_str}}</tspan>
+                        </text>
+                    </g>
+                </g>
+            </g>
+        </g>
+        <!-- 左侧 300x300 区域 -->
+        <g transform="translate(0, 0)">
+            <rect width="300" height="300" rx="20" ry="20" fill="black"/>
+            <image
+                href="{{bg_image}}"
+                width="300" height="300"
+                clip-path="url(#leftClip)"
+                preserveAspectRatio="xMidYMid slice"
+            />
+        </g>
+    </g>
+
+    <g transform="translate(0, 300)">
+        <rect
+            fill="#757575"
+            width="1200" height="50"
+            filter="url(#blurAndFade)"
+            preserveAspectRatio="xMidYMid slice"
+            clip-path="url(#downClip)"
+        />
+
+        <g transform="translate(20, 35)">
+        <text stroke-width="1.5px" stroke="#000" fill="#fff" font-size="24" font-weight="500" paint-order="stroke">
+        <tspan font-family="Source Han Sans">Hash: {{beatmap_hash}}</tspan>
+        <tspan font-family="Source Han Sans" dx="20">{{beatmap_url}}</tspan>
+        <tspan font-family="Source Han Sans" x="1160" text-anchor="end">{{status}}</tspan>
+        </text>
+        </g>
+    </g>
+</svg>

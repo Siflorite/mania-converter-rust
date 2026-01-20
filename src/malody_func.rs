@@ -35,10 +35,10 @@ impl Beat {
         let beat_0 = self.beat[0] as f64;
         let beat_1 = self.beat[1] as f64;
         let beat_2 = self.beat[2] as f64;
-    
+
         // 计算结果
         let result = beat_0 + (beat_1 / beat_2);
-    
+
         // 返回结果
         result
     }
@@ -54,10 +54,10 @@ impl Effect {
         let beat_0 = self.beat[0] as f64;
         let beat_1 = self.beat[1] as f64;
         let beat_2 = self.beat[2] as f64;
-    
+
         // 计算结果
         let result = beat_0 + (beat_1 / beat_2);
-    
+
         // 返回结果
         result
     }
@@ -78,25 +78,25 @@ impl Note {
         let beat_0 = self.beat[0] as f64;
         let beat_1 = self.beat[1] as f64;
         let beat_2 = self.beat[2] as f64;
-    
+
         // 计算结果
         let result = beat_0 + (beat_1 / beat_2);
-    
+
         // 返回结果
         result
     }
     fn end_beat_to_float(&self) -> f64 {
         // 提取数组中的元素
-        if let Some(end_beat) = &self.endbeat{
+        if let Some(end_beat) = &self.endbeat {
             let beat_0 = end_beat[0] as f64;
             let beat_1 = end_beat[1] as f64;
             let beat_2 = end_beat[2] as f64;
-        
+
             // 计算结果
             let result = beat_0 + (beat_1 / beat_2);
-        
+
             // 返回结果
-            return result
+            return result;
         }
         self.beat_to_float()
     }
