@@ -11,26 +11,29 @@ use crate::osu_func::{OsuDataLegacy, OsuHitObjectLegacy, OsuMisc, OsuTimingPoint
 
 pub use self::mcz2osz::*;
 use rayon::prelude::*;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct Meta {
     pub creator: String,
     pub background: String,
     pub version: String,
+    #[serde(skip_serializing_if="Option::is_none")]
     pub preview: Option<i32>,
     pub mode: u8,
     pub song: Song,
     pub mode_ext: ModeExt,
 }
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct Song {
     pub title: String,
     pub artist: String,
+    #[serde(skip_serializing_if="Option::is_none")]
     pub titleorg: Option<String>,
+    #[serde(skip_serializing_if="Option::is_none")]
     pub artistorg: Option<String>,
 }
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct ModeExt {
     pub column: u8,
 }
@@ -124,7 +127,7 @@ impl From<&[u32]> for Beat {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct Timing {
     pub beat: Vec<u32>,
     pub bpm: f64,
@@ -143,7 +146,7 @@ impl Timing {
         result
     }
 }
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct Effect {
     pub beat: Vec<u32>,
     pub scroll: f64,
@@ -162,14 +165,20 @@ impl Effect {
         result
     }
 }
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct Note {
     pub beat: Vec<u32>,
+    #[serde(skip_serializing_if="Option::is_none")]
     pub endbeat: Option<Vec<u32>>,
+    #[serde(skip_serializing_if="Option::is_none")]
     pub column: Option<u8>,
+    #[serde(skip_serializing_if="Option::is_none")]
     pub sound: Option<String>,
+    #[serde(skip_serializing_if="Option::is_none")]
     pub vol: Option<i16>,
+    #[serde(skip_serializing_if="Option::is_none")]
     pub offset: Option<i32>,
+    #[serde(skip_serializing_if="Option::is_none")]
     pub r#type: Option<u8>,
 }
 impl Note {
@@ -201,11 +210,11 @@ impl Note {
         self.beat_to_float()
     }
 }
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct McData {
     pub meta: Meta,
     pub time: Vec<Timing>,
-    pub effect: Option<Vec<Effect>>,
+    pub effect: Vec<Effect>,
     pub note: Vec<Note>,
 }
 
@@ -336,19 +345,19 @@ impl McData {
 
         let mut effect_list: Vec<(f64, u32, f64)> = Vec::new(); // 分别记录Malody的拍数,对应的osu内毫秒时刻和osu格式变速
 
-        if let Some(effects) = &self.effect {
-            for (_index, item) in effects.iter().enumerate() {
-                let current_beat = item.beat_to_float();
-                let current_time = beat_to_time(current_beat);
-                let scroll = item.scroll;
-                let osu_scroll = if scroll > 0_f64 {
-                    -100_f64 / scroll
-                } else {
-                    -100000000_f64
-                };
-                effect_list.push((current_beat, current_time, osu_scroll));
-            }
+
+        for (_index, item) in self.effect.iter().enumerate() {
+            let current_beat = item.beat_to_float();
+            let current_time = beat_to_time(current_beat);
+            let scroll = item.scroll;
+            let osu_scroll = if scroll > 0_f64 {
+                -100_f64 / scroll
+            } else {
+                -100000000_f64
+            };
+            effect_list.push((current_beat, current_time, osu_scroll));
         }
+
 
         let mut timings = [bpm_list.clone(), effect_list].concat();
         timings.sort_by_key(|x| x.1);
@@ -381,16 +390,16 @@ impl McData {
                         x_pos: x_pos,
                         time: item_time,
                         end_time: Some(item_end_time),
-                        volume: 0,
-                        hitsound: None,
+                        volume: item.vol.map_or(0u8, |_| 100u8), // Malody <= 4.3.7 有bug，所有vol如果存在就是100，实际值无效
+                        hitsound: item.sound.clone(),
                     }
                 } else {
                     OsuHitObjectLegacy {
                         x_pos: x_pos,
                         time: item_time,
                         end_time: None,
-                        volume: 0,
-                        hitsound: None,
+                        volume: item.vol.map_or(0u8, |_| 100u8),
+                        hitsound: item.sound.clone(),
                     }
                 }
             })

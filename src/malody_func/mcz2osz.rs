@@ -429,19 +429,19 @@ fn convert_mc_to_osu(mc_data: &McData) -> io::Result<Option<OsuDataLegacy>> {
 
     let mut effect_list: Vec<(f64, u32, f64)> = Vec::new(); // 分别记录Malody的拍数,对应的osu内毫秒时刻和osu格式变速
 
-    if let Some(effects) = &mc_data.effect {
-        for (_index, item) in effects.iter().enumerate() {
-            let current_beat = item.beat_to_float();
-            let current_time = beat_to_time(current_beat);
-            let scroll = item.scroll;
-            let osu_scroll = if scroll > 0_f64 {
-                -100_f64 / scroll
-            } else {
-                -100000000_f64
-            };
-            effect_list.push((current_beat, current_time, osu_scroll));
-        }
+
+    for (_index, item) in mc_data.effect.iter().enumerate() {
+        let current_beat = item.beat_to_float();
+        let current_time = beat_to_time(current_beat);
+        let scroll = item.scroll;
+        let osu_scroll = if scroll > 0_f64 {
+            -100_f64 / scroll
+        } else {
+            -100000000_f64
+        };
+        effect_list.push((current_beat, current_time, osu_scroll));
     }
+
 
     // 不会有谱面有一百万个timing吧，不用双指针了，怎么简单怎么来咯
     // let timings = [bpm_list, effect_list].concat().sort_by_key(|x| x.1);
@@ -511,12 +511,16 @@ fn convert_mc_to_osu(mc_data: &McData) -> io::Result<Option<OsuDataLegacy>> {
                     x_pos: x_pos,
                     time: item_time,
                     end_time: Some(item_end_time),
+                    volume: item.vol.map_or(0u8, |x| x as u8),
+                    hitsound: item.sound.clone(),
                 }
             } else {
                 OsuHitObjectLegacy {
                     x_pos: x_pos,
                     time: item_time,
                     end_time: None,
+                    volume: item.vol.map_or(0u8, |x| x as u8),
+                    hitsound: item.sound.clone(),
                 }
             }
         })

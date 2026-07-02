@@ -111,7 +111,11 @@ where
         {
             (
                 volume_str.parse().unwrap_or(0),
-                Some(hitsound_str.to_string()),
+                if hitsound_str.is_empty() {
+                    None
+                } else {
+                    Some(hitsound_str.to_string())
+                },
             )
         } else {
             (0u8, None)
@@ -732,11 +736,6 @@ impl OsuDataLegacy {
                 }
             })
             .collect::<Vec<_>>();
-        let mc_effects = if effects_grid.is_empty() {
-            None
-        } else {
-            Some(effects_grid)
-        };
 
         let to_grid = |note: &OsuHitObjectLegacy| -> Note {
             let start_time = note.time;
@@ -750,13 +749,18 @@ impl OsuDataLegacy {
             };
 
             let column = note.x_pos * column_num / 512;
+            let vol = if note.volume == 0 {
+                None
+            } else {
+                Some(note.volume as i16)
+            };
 
             Note {
                 beat: start_grid.to_vec(),
                 endbeat: end_grid.map(|e| e.to_vec()),
                 column: Some(column as u8),
-                sound: None,
-                vol: None,
+                sound: note.hitsound.clone(),
+                vol,
                 offset: None,
                 r#type: None,
             }
@@ -783,7 +787,7 @@ impl OsuDataLegacy {
         McData {
             meta: mc_meta,
             time: beats_grid,
-            effect: mc_effects,
+            effect: effects_grid,
             note: new_notes,
         }
     }
