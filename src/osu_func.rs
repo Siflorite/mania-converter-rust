@@ -1,17 +1,17 @@
 pub mod calc_sr;
 mod helper_functions;
-pub mod osz_func;
 pub mod osz2mcz;
+pub mod osz_func;
 
 pub use calc_sr::{calculate_from_data, calculate_from_file};
-use core::f64;
 pub use osz_func::{parse_osz_file, parse_osz_postprocess, parse_whole_dir_osz};
 use rayon::prelude::*;
 use std::fs::File;
 use std::io::{self, BufRead, BufReader, BufWriter, Write};
+use std::str::FromStr;
 
 use crate::BeatMapInfo;
-use crate::malody_func::{self, McData, Meta, Beat, Note};
+use crate::malody_func::{self, Beat, McData, Meta, Note};
 
 #[derive(Debug, Clone)]
 pub struct OsuMisc {
@@ -37,8 +37,37 @@ pub struct OsuTimingPoint {
     pub is_timing: bool,
 }
 
+// Reference: https://osu.ppy.sh/wiki/zh/Client/File_formats/osu_%28file_format%29#%E9%9F%B3%E6%95%88
+// Note: x, y, time, type, hitSound, hitSample
+// LongNote: x, y, time, type, hitSound, endTime:hitSample
+// hitSample = normalSet:additionSet:index:volume:filename
+// useful: x, time, type, volume, filename
+#[derive(Debug, Clone)]
+pub struct OsuHitObject<H> {
+    pub x_pos: u32,
+    pub time: H,
+    pub end_time: Option<H>,
+    pub volume: u8,
+    pub hitsound: Option<String>,
+}
+
+pub type OsuHitObjectLegacy = OsuHitObject<u32>;
+pub type OsuHitObjectV128 = OsuHitObject<f64>;
+
+pub trait HasVersion {
+    const VERSION: &'static str;
+}
+
+impl HasVersion for u32 {
+    const VERSION: &'static str = "v14";
+}
+
+impl HasVersion for f64 {
+    const VERSION: &'static str = "v128";
+}
+
 pub trait HitObject: Sized {
-    type TimeType: PartialOrd + Copy + Into<f64>;
+    type TimeType: PartialOrd + Copy + Into<f64> + FromStr + HasVersion;
     fn parse(line: &str) -> Option<Self>;
 
     fn to_legacy(self) -> OsuHitObjectLegacy;
@@ -48,111 +77,73 @@ pub trait HitObject: Sized {
     fn get_x_pos(&self) -> u32;
     fn get_time(&self) -> Self::TimeType;
     fn get_end_time(&self) -> Option<Self::TimeType>;
+    fn get_volume(&self) -> u8;
+    fn get_hitsound(&self) -> &str;
 }
 
-#[derive(Debug, Clone)]
-pub struct OsuHitObjectLegacy {
-    pub x_pos: u32,
-    pub time: u32,
-    pub end_time: Option<u32>,
-}
-
-impl HitObject for OsuHitObjectLegacy {
-    type TimeType = u32;
+impl<H> HitObject for OsuHitObject<H>
+where
+    H: PartialOrd + Copy + Into<f64> + FromStr + HasVersion,
+{
+    type TimeType = H;
 
     fn version() -> &'static str {
-        "v14"
+        H::VERSION
     }
 
     fn parse(line: &str) -> Option<Self> {
         let parts: Vec<&str> = line.split(',').collect();
-        if parts.len() < 3 {
+        let effect_parts = parts.last().map_or(Vec::new(), |s| s.split(':').collect());
+
+        if parts.len() < 6 {
             return None;
         }
 
         let x_pos = parts[0].parse().ok()?;
-        let time = parts[2].parse().ok()?;
+        let time = parts[2].parse::<Self::TimeType>().ok()?;
         let end_time = match parts[3] {
-            "128" => parts[5].split(':').next().and_then(|s| s.parse().ok()),
+            "128" => effect_parts.first().and_then(|s| s.parse().ok()),
             _ => None,
+        };
+
+        let (volume, hitsound) = if effect_parts.len() >= 5
+            && let [.., volume_str, hitsound_str] = effect_parts.as_slice()
+        {
+            (
+                volume_str.parse().unwrap_or(0),
+                Some(hitsound_str.to_string()),
+            )
+        } else {
+            (0u8, None)
         };
 
         Some(Self {
             x_pos,
             time,
             end_time,
-        })
-    }
-
-    fn to_legacy(self) -> OsuHitObjectLegacy {
-        self
-    }
-
-    fn to_v128(self) -> OsuHitObjectV128 {
-        OsuHitObjectV128 {
-            x_pos: self.x_pos,
-            time: self.time as f64,
-            end_time: self.end_time.map(|t| t as f64),
-        }
-    }
-
-    fn get_x_pos(&self) -> u32 {
-        self.x_pos
-    }
-
-    fn get_time(&self) -> Self::TimeType {
-        self.time
-    }
-
-    fn get_end_time(&self) -> Option<Self::TimeType> {
-        self.end_time
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct OsuHitObjectV128 {
-    pub x_pos: u32,
-    pub time: f64,
-    pub end_time: Option<f64>,
-}
-
-impl HitObject for OsuHitObjectV128 {
-    type TimeType = f64;
-
-    fn version() -> &'static str {
-        "v128"
-    }
-
-    fn parse(line: &str) -> Option<Self> {
-        let parts: Vec<&str> = line.split(',').collect();
-        if parts.len() < 3 {
-            return None;
-        }
-
-        let x_pos = parts[0].parse().ok()?;
-        let time = parts[2].parse().ok()?;
-        let end_time = match parts[3] {
-            "128" => parts[5].split(':').next().and_then(|s| s.parse().ok()),
-            _ => None,
-        };
-
-        Some(Self {
-            x_pos,
-            time,
-            end_time,
+            volume,
+            hitsound,
         })
     }
 
     fn to_legacy(self) -> OsuHitObjectLegacy {
         OsuHitObjectLegacy {
             x_pos: self.x_pos,
-            time: self.time as u32,
-            end_time: self.end_time.map(|t| t as u32),
+            time: self.time.into() as u32,
+            end_time: self.end_time.map(|t| t.into() as u32),
+            volume: self.volume,
+            hitsound: self.hitsound,
         }
     }
 
     fn to_v128(self) -> OsuHitObjectV128 {
-        self
+        OsuHitObjectV128 {
+            x_pos: self.x_pos,
+            time: self.time.into(),
+            end_time: self.end_time.map(|t| t.into()),
+            volume: self.volume,
+            hitsound: self.hitsound,
+        }
     }
 
     fn get_x_pos(&self) -> u32 {
@@ -165,6 +156,18 @@ impl HitObject for OsuHitObjectV128 {
 
     fn get_end_time(&self) -> Option<Self::TimeType> {
         self.end_time
+    }
+
+    fn get_volume(&self) -> u8 {
+        self.volume
+    }
+
+    fn get_hitsound(&self) -> &str {
+        if self.hitsound.is_some() {
+            self.hitsound.as_ref().unwrap()
+        } else {
+            ""
+        }
     }
 }
 
@@ -372,7 +375,10 @@ where
             "AudioLeadIn: 0\nPreviewTime: {}\nCountdown: 0\nSampleSet: Soft\n",
             self.misc.preview_time
         )?;
-        write!(writer, "StackLeniency: 0.7\nMode: 3\nLetterboxInBreaks: 0\nSpecialStyle: 0\nWidescreenStoryboard: 1\n\n")?;
+        write!(
+            writer,
+            "StackLeniency: 0.7\nMode: 3\nLetterboxInBreaks: 0\nSpecialStyle: 0\nWidescreenStoryboard: 1\n\n"
+        )?;
 
         // 构建 Editor 部分
         write!(
@@ -401,7 +407,11 @@ where
         } else {
             format!("{:.1}", self.misc.od)
         };
-        write!(writer, "HPDrainRate:8\nCircleSize:{}\nOverallDifficulty:{}\nApproachRate:5\nSliderMultiplier:1.4\nSliderTickRate:1\n\n", self.misc.circle_size, od_str)?;
+        write!(
+            writer,
+            "HPDrainRate:8\nCircleSize:{}\nOverallDifficulty:{}\nApproachRate:5\nSliderMultiplier:1.4\nSliderTickRate:1\n\n",
+            self.misc.circle_size, od_str
+        )?;
 
         // 构建 Events 部分
         write!(writer, "[Events]\n//Background and Video events\n")?;
@@ -448,9 +458,22 @@ where
                     } else {
                         format!("{:.12}", t_f)
                     };
-                    format!("{},192,{},128,0,{}:0:0:0:0:", ho.get_x_pos(), h_str, t_str)
+                    format!(
+                        "{},192,{},128,0,{}:0:0:0:{}:{}",
+                        ho.get_x_pos(),
+                        h_str,
+                        t_str,
+                        ho.get_volume(),
+                        ho.get_hitsound()
+                    )
                 } else {
-                    format!("{},192,{},1,0,0:0:0:0:", ho.get_x_pos(), h_str)
+                    format!(
+                        "{},192,{},1,0,0:0:0:{}:{}",
+                        ho.get_x_pos(),
+                        h_str,
+                        ho.get_volume(),
+                        ho.get_hitsound()
+                    )
                 }
             })
             .collect();
@@ -571,6 +594,8 @@ impl From<OsuHitObjectV128> for OsuHitObjectLegacy {
             x_pos: v.x_pos,
             time: v.time as u32,
             end_time: v.end_time.map(|t| t as u32),
+            volume: v.volume,
+            hitsound: v.hitsound,
         }
     }
 }
@@ -592,6 +617,8 @@ impl From<OsuHitObjectLegacy> for OsuHitObjectV128 {
             x_pos: v.x_pos,
             time: v.time as f64,
             end_time: v.end_time.map(|t| t as f64),
+            volume: v.volume,
+            hitsound: v.hitsound,
         }
     }
 }
@@ -602,7 +629,11 @@ impl OsuDataLegacy {
         let column_num = self.misc.circle_size;
 
         // malody的初始时间点可以认为是osu往回退第一个负数时间
-        let original_timings = self.timings.iter().filter(|t| t.is_timing).collect::<Vec<_>>();
+        let original_timings = self
+            .timings
+            .iter()
+            .filter(|t| t.is_timing)
+            .collect::<Vec<_>>();
         let original_offset = original_timings.first().unwrap().time;
         let original_interval = original_timings.first().unwrap().val;
         let offset_beats = if original_offset > 0.0 {
@@ -630,7 +661,7 @@ impl OsuDataLegacy {
             background: self.misc.background.clone(),
             version: self.misc.version.clone(),
             preview: Some(preview),
-            mode: 0, 
+            mode: 0,
             song,
             mode_ext,
         };
@@ -640,7 +671,11 @@ impl OsuDataLegacy {
             .enumerate()
             .map(|(i, t)| {
                 OsuTimingPoint {
-                    time: if i == 0 {t.time - offset.floor()} else {t.time}, // 只需要调整第一根时间线的位置
+                    time: if i == 0 {
+                        t.time - offset.floor()
+                    } else {
+                        t.time
+                    }, // 只需要调整第一根时间线的位置
                     val: t.val,
                     is_timing: t.is_timing,
                 }
@@ -655,7 +690,8 @@ impl OsuDataLegacy {
                 let end_time = t[1].time;
                 let val = (end_time - start_time) / interval;
                 Beat::from_float(val)
-            }).collect::<Vec<_>>();
+            })
+            .collect::<Vec<_>>();
 
         let mut beat_counts_fold = beat_counts
             .iter()
@@ -669,11 +705,9 @@ impl OsuDataLegacy {
         let beats_grid = beat_counts_fold
             .iter()
             .enumerate()
-            .map(|(i, b)| {
-                malody_func::Timing {
-                    beat: b.to_vec(),
-                    bpm: 60000f64 / timings[i].val,
-                }
+            .map(|(i, b)| malody_func::Timing {
+                beat: b.to_vec(),
+                bpm: 60000f64 / timings[i].val,
             })
             .collect::<Vec<_>>();
 
@@ -685,7 +719,8 @@ impl OsuDataLegacy {
             beats + Beat::from_float((time - timing.time) / timing.val)
         };
 
-        let effects_grid = self.timings
+        let effects_grid = self
+            .timings
             .iter()
             .filter(|t| !t.is_timing)
             .map(|t| {
@@ -716,34 +751,34 @@ impl OsuDataLegacy {
 
             let column = note.x_pos * column_num / 512;
 
-            Note { 
-                beat: start_grid.to_vec(), 
+            Note {
+                beat: start_grid.to_vec(),
                 endbeat: end_grid.map(|e| e.to_vec()),
-                column: Some(column as u8), 
-                sound: None, 
-                vol: None, 
-                offset: None, 
-                r#type: None 
+                column: Some(column as u8),
+                sound: None,
+                vol: None,
+                offset: None,
+                r#type: None,
             }
         };
 
-        let mut new_notes = self.notes
+        let mut new_notes = self
+            .notes
             .iter()
             .enumerate()
             .map(|(_i, n)| to_grid(n))
             .collect::<Vec<_>>();
 
         // Malody最后一个音符是开始时间信息
-        new_notes.push(
-            Note { 
-                beat: Vec::from([0,0,1]), 
-                endbeat: None, 
-                column: None, 
-                sound: Some(self.misc.audio_file_name.clone()), 
-                vol: Some(100), 
-                offset: Some(timings[0].time.abs() as i32), 
-                r#type: Some(1)
-            });
+        new_notes.push(Note {
+            beat: Vec::from([0, 0, 1]),
+            endbeat: None,
+            column: None,
+            sound: Some(self.misc.audio_file_name.clone()),
+            vol: Some(100),
+            offset: Some(timings[0].time.abs() as i32),
+            r#type: Some(1),
+        });
 
         McData {
             meta: mc_meta,

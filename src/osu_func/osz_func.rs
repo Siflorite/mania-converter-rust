@@ -1,5 +1,5 @@
-use crate::osu_func::OsuDataV128;
 use crate::BeatMapInfo;
+use crate::osu_func::OsuDataV128;
 
 use rayon::prelude::*;
 use std::env;

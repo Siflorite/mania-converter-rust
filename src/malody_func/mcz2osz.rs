@@ -9,16 +9,16 @@ use walkdir::WalkDir;
 use zip::write::SimpleFileOptions;
 use zip::{CompressionMethod, ZipArchive, ZipWriter};
 
+use crate::BeatMapInfo;
 use crate::malody_func::McData;
 use crate::misc::sanitize_filename;
 use crate::osu_func::{OsuDataLegacy, OsuHitObjectLegacy, OsuMisc, OsuTimingPoint};
-use crate::BeatMapInfo;
 
 /// Convert all .mcz files under given dir to .osz files.  
 /// "." or "" will set dir to the Run Directory.
 pub fn process_whole_dir_mcz(dir: &str, b_calc_sr: bool, b_print_results: bool) -> io::Result<()> {
     let current_dir = if dir == "" { "." } else { dir }; // 当前目录
-                                                         // let results_queue = Arc::new(SegQueue::<(PathBuf, Vec<BeatMapInfo>)>::new());
+    // let results_queue = Arc::new(SegQueue::<(PathBuf, Vec<BeatMapInfo>)>::new());
 
     // 遍历当前目录下的所有文件
     let processed: Vec<_> = WalkDir::new(current_dir)
@@ -449,7 +449,7 @@ fn convert_mc_to_osu(mc_data: &McData) -> io::Result<Option<OsuDataLegacy>> {
     let min_time = bpm_list.first().map(|x| x.1).unwrap_or(0);
 
     let mut i = 0; // bpm_list指针
-                   // 跳过早于bpm起始时间的effect元素
+    // 跳过早于bpm起始时间的effect元素
     let mut j: usize = effect_list.partition_point(|x| x.1 < min_time);
 
     while i < bpm_list.len() && j < effect_list.len() {
@@ -534,7 +534,10 @@ fn serialize_osu_data(writer: &mut BufWriter<File>, osu_data: &OsuDataLegacy) ->
         "AudioLeadIn: 0\nPreviewTime: {}\nCountdown: 0\nSampleSet: Soft\n",
         osu_data.misc.preview_time
     )?;
-    write!(writer, "StackLeniency: 0.7\nMode: 3\nLetterboxInBreaks: 0\nSpecialStyle: 0\nWidescreenStoryboard: 1\n\n")?;
+    write!(
+        writer,
+        "StackLeniency: 0.7\nMode: 3\nLetterboxInBreaks: 0\nSpecialStyle: 0\nWidescreenStoryboard: 1\n\n"
+    )?;
 
     // 构建 Editor 部分
     write!(
@@ -563,7 +566,11 @@ fn serialize_osu_data(writer: &mut BufWriter<File>, osu_data: &OsuDataLegacy) ->
     } else {
         format!("{:.1}", osu_data.misc.od)
     };
-    write!(writer, "HPDrainRate:8\nCircleSize:{}\nOverallDifficulty:{}\nApproachRate:5\nSliderMultiplier:1.4\nSliderTickRate:1\n\n", osu_data.misc.circle_size, od_str)?;
+    write!(
+        writer,
+        "HPDrainRate:8\nCircleSize:{}\nOverallDifficulty:{}\nApproachRate:5\nSliderMultiplier:1.4\nSliderTickRate:1\n\n",
+        osu_data.misc.circle_size, od_str
+    )?;
 
     // 构建 Events 部分
     write!(writer, "[Events]\n//Background and Video events\n")?;

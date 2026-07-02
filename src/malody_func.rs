@@ -1,13 +1,17 @@
 mod mcz2osz;
 
-use std::{fs::File, io::{self, BufReader, Read}, ops::AddAssign};
 use std::ops::Add;
+use std::{
+    fs::File,
+    io::{self, BufReader, Read},
+    ops::AddAssign,
+};
 
-use crate::osu_func::{OsuDataLegacy, OsuMisc, OsuTimingPoint, OsuHitObjectLegacy};
+use crate::osu_func::{OsuDataLegacy, OsuHitObjectLegacy, OsuMisc, OsuTimingPoint};
 
 pub use self::mcz2osz::*;
-use serde::Deserialize;
 use rayon::prelude::*;
+use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
 pub struct Meta {
@@ -43,7 +47,7 @@ impl Beat {
         let main_beat = self.main_beat as f64;
         let sub_beat = self.sub_beat as f64;
         let div_beat = self.div_beat as f64;
-        
+
         main_beat + (sub_beat / div_beat)
     }
 
@@ -58,7 +62,7 @@ impl Beat {
                 main_beat: beat + 1,
                 sub_beat: 0,
                 div_beat: 1,
-            }
+            };
         }
 
         let (numerator, denominator) = (1..=16)
@@ -66,7 +70,9 @@ impl Beat {
             .min_by(|&a, &b| {
                 let residual_a = (fraction - a.0 as f64 / a.1 as f64).abs();
                 let residual_b = (fraction - b.0 as f64 / b.1 as f64).abs();
-                residual_a.partial_cmp(&residual_b).unwrap_or(std::cmp::Ordering::Equal)
+                residual_a
+                    .partial_cmp(&residual_b)
+                    .unwrap_or(std::cmp::Ordering::Equal)
             })
             .unwrap_or((0, 1));
 
@@ -228,12 +234,19 @@ impl McData {
         // 检查模式是否为 0（Key 模式）
         if self.meta.mode != 0 {
             eprintln!("This program only supports Malody Chart in Key Mode!");
-            return Err(io::Error::new(io::ErrorKind::InvalidData, "This program only supports Malody Chart in Key Mode!"));
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "This program only supports Malody Chart in Key Mode!",
+            ));
         }
 
-        let audio = self
-            .note
-            .last()
+        // 20260621修改
+        // 自Malody4.3.7以来，负责音频Offset的虚拟note在note集合的最后一个元素
+        // 但是老版本在第一个
+        // 为了适应大批量旧谱转换，使用filter代替
+        // 鉴别方式为type字段存在且为1
+        let audio_note = self.note.iter().find(|n| n.r#type == Some(1));
+        let audio = audio_note
             .and_then(|n| n.sound.as_ref())
             .unwrap_or(&String::new())
             .clone();
@@ -269,11 +282,9 @@ impl McData {
         };
 
         // 构建 TimingPoints 部分
-        let offset_ms = if let Some(note) = self.note.last() {
-            note.offset.unwrap_or(0)
-        } else {
-            0
-        } as f64;
+        let offset_ms = audio_note
+            .map(|n| n.offset.unwrap_or(0) as f64)
+            .unwrap_or(0.0);
         if osu_data.misc.preview_time > offset_ms as i32 {
             osu_data.misc.preview_time += offset_ms as i32;
         }
@@ -341,20 +352,23 @@ impl McData {
 
         let mut timings = [bpm_list.clone(), effect_list].concat();
         timings.sort_by_key(|x| x.1);
-        osu_data.timings = timings.iter().map(|&(_, time, scroll)| {
-            OsuTimingPoint {
+        osu_data.timings = timings
+            .iter()
+            .map(|&(_, time, scroll)| OsuTimingPoint {
                 time: time as f64,
                 val: scroll,
                 is_timing: scroll > 0.0,
-            }
-        }).collect();
+            })
+            .collect();
 
         // 构建 HitObjects 部分
         let total_column = self.meta.mode_ext.column;
         let column_factor = 512.0 / total_column as f64;
 
-        osu_data.notes = self.note[..self.note.len() - 1]
+        osu_data.notes = self
+            .note
             .par_iter()
+            .filter(|n| n.r#type != Some(1))
             .map(|item| {
                 let item_time = beat_to_time(item.beat_to_float());
                 let column = item.column.unwrap_or(0);
@@ -367,12 +381,16 @@ impl McData {
                         x_pos: x_pos,
                         time: item_time,
                         end_time: Some(item_end_time),
+                        volume: 0,
+                        hitsound: None,
                     }
                 } else {
                     OsuHitObjectLegacy {
                         x_pos: x_pos,
                         time: item_time,
                         end_time: None,
+                        volume: 0,
+                        hitsound: None,
                     }
                 }
             })

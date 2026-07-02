@@ -1,5 +1,5 @@
-use crate::osu_func::helper_functions::*;
 use crate::osu_func::OsuDataLegacy;
+use crate::osu_func::helper_functions::*;
 
 use std::borrow::Cow;
 use std::collections::BTreeMap;

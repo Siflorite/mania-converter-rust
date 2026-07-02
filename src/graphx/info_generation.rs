@@ -8,8 +8,8 @@ use std::{
     sync::Arc,
 };
 
-use crate::misc::sanitize_filename;
 use crate::BeatMapInfo;
+use crate::misc::sanitize_filename;
 
 const INFO_TEMPLATE_PATH: &str = "./svg/info_card.svg";
 const NO_IMAGE_PATH: &str = "./svg/no_image.jpg";

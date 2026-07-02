@@ -59,7 +59,17 @@ impl fmt::Display for BeatMapInfo {
         write!(
             f,
             "Title: {}\nArtist: {}\nCreator: {}\nVersion: {}\nBeatmapID: {}\nBeatmapSetID: {}\nColumns: {}\nBPM: {}\nLength: {}\nSR: {}\nLN_Ratio: {:.3}",
-            title_str, artist_str, self.creator, self.version, self.beatmap_id, self.beatmap_set_id, self.column_count, bpm_str, length_str, sr_str, ln_ratio
+            title_str,
+            artist_str,
+            self.creator,
+            self.version,
+            self.beatmap_id,
+            self.beatmap_set_id,
+            self.column_count,
+            bpm_str,
+            length_str,
+            sr_str,
+            ln_ratio
         )
     }
 }
