@@ -368,6 +368,7 @@ fn convert_mc_to_osu(mc_data: &McData) -> io::Result<Option<OsuDataLegacy>> {
             od: 8.0,
             background: mc_data.meta.background.clone(),
         },
+        storyboard_samples: Vec::new(),
         timings: Vec::new(),
         notes: Vec::new(),
     };

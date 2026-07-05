@@ -30,6 +30,16 @@ pub struct OsuMisc {
     pub background: String,
 }
 
+// Reference: https://osu.ppy.sh/wiki/en/Storyboard/Scripting/Audio
+// Sample,<time>,<layer_num>,"<filepath>",<volume>
+// Always use layer_num = 0
+#[derive(Debug, Clone)]
+pub struct OsuStoryboardSoundSample {
+    pub time: f64,
+    pub hitsound: String,
+    pub volume: u8,
+}
+
 #[derive(Debug, Clone)]
 pub struct OsuTimingPoint {
     pub time: f64,
@@ -178,6 +188,7 @@ where
 #[derive(Debug, Clone)]
 pub struct OsuData<H> {
     pub misc: OsuMisc,
+    pub storyboard_samples: Vec<OsuStoryboardSoundSample>,
     pub timings: Vec<OsuTimingPoint>,
     pub notes: Vec<H>,
 }
@@ -232,24 +243,13 @@ where
         })
     }
 
-    // 转换到其他版本
-    pub fn convert<T: HitObject>(self) -> OsuData<T>
-    where
-        T: From<H>,
-    {
-        OsuData {
-            misc: self.misc,
-            timings: self.timings,
-            notes: self.notes.into_iter().map(T::from).collect(),
-        }
-    }
-
     pub fn to_legacy(self) -> OsuDataLegacy
     where
         H: HitObject,
     {
         OsuDataLegacy {
             misc: self.misc,
+            storyboard_samples: self.storyboard_samples,
             timings: self.timings,
             notes: self.notes.into_iter().map(H::to_legacy).collect(),
         }
@@ -261,6 +261,7 @@ where
     {
         OsuDataV128 {
             misc: self.misc,
+            storyboard_samples: self.storyboard_samples,
             timings: self.timings,
             notes: self.notes.into_iter().map(H::to_v128).collect(),
         }
@@ -286,6 +287,7 @@ where
             background: String::new(),
         };
 
+        let mut storyboard_samples = Vec::new();
         let mut timings = Vec::new();
         let mut notes = Vec::new();
         let mut current_section = Section::Unknown;
@@ -339,8 +341,22 @@ where
                         continue;
                     }
                     let parts: Vec<&str> = line.split(',').collect();
+                    
                     if parts.len() >= 3 && parts[0] == "0" && parts[1] == "0" {
+                        // Background
                         misc.background = parts[2].trim_matches('"').to_string();
+                    } else if parts.len() == 5 && parts[0] == "Sample" {
+                        // Sound sample
+                        let time = parts[1].parse::<f64>();
+                        let hitsound = parts[3].trim_matches('"');
+                        let vol = parts[4].trim().parse::<u8>();
+                        if time.is_ok() && !hitsound.is_empty() && vol.is_ok() {
+                            storyboard_samples.push(OsuStoryboardSoundSample {
+                                time: time.unwrap(),
+                                hitsound: hitsound.to_string(),
+                                volume: vol.unwrap(),
+                            });
+                        }
                     }
                 }
                 Section::TimingPoints => {
@@ -359,6 +375,7 @@ where
 
         Ok(Self {
             misc,
+            storyboard_samples,
             timings,
             notes,
         })
@@ -434,7 +451,11 @@ where
             writer,
             "//Storyboard Layer 3 (Foreground)\n//Storyboard Layer 4 (Overlay)\n"
         )?;
-        write!(writer, "//Storyboard Sound Samples\n\n")?;
+        write!(writer, "//Storyboard Sound Samples\n")?;
+        for sample in self.storyboard_samples.iter() {
+            write!(writer, "Sample,{},0,\"{}\",{}\n", sample.time, sample.hitsound, sample.volume)?;
+        }
+        write!(writer, "\n")?;
 
         // 构建 TimingPoints 部分
         let timing_points: Vec<_> = self
@@ -583,47 +604,27 @@ pub type OsuDataV128 = OsuData<OsuHitObjectV128>;
 // 转换实现
 impl From<OsuDataV128> for OsuDataLegacy {
     fn from(v: OsuDataV128) -> Self {
-        OsuDataLegacy {
-            misc: v.misc,
-            timings: v.timings,
-            notes: v.notes.into_iter().map(|n| n.to_legacy()).collect(),
-        }
+        v.to_legacy()
     }
 }
 
 // 为OsuHitObjectV128添加到Legacy的转换
 impl From<OsuHitObjectV128> for OsuHitObjectLegacy {
     fn from(v: OsuHitObjectV128) -> Self {
-        Self {
-            x_pos: v.x_pos,
-            time: v.time as u32,
-            end_time: v.end_time.map(|t| t as u32),
-            volume: v.volume,
-            hitsound: v.hitsound,
-        }
+        v.to_legacy()
     }
 }
 
 impl From<OsuDataLegacy> for OsuDataV128 {
     fn from(v: OsuDataLegacy) -> Self {
-        OsuDataV128 {
-            misc: v.misc,
-            timings: v.timings,
-            notes: v.notes.into_iter().map(|n| n.to_v128()).collect(),
-        }
+        v.to_v128()
     }
 }
 
 // 为OsuHitObjectV128添加到Legacy的转换
 impl From<OsuHitObjectLegacy> for OsuHitObjectV128 {
     fn from(v: OsuHitObjectLegacy) -> Self {
-        Self {
-            x_pos: v.x_pos,
-            time: v.time as f64,
-            end_time: v.end_time.map(|t| t as f64),
-            volume: v.volume,
-            hitsound: v.hitsound,
-        }
+        v.to_v128()
     }
 }
 
@@ -784,11 +785,33 @@ impl OsuDataLegacy {
             r#type: Some(1),
         });
 
+        // 以及自动播放的HitSound，对应osu的Storyboard Sound Samples
+        let sound_samples = self.storyboard_samples.iter().map(|sample| {
+            let temp_osu_note = OsuHitObjectLegacy {
+                x_pos: 0,
+                time: sample.time as u32,
+                end_time: None,
+                volume: sample.volume,
+                hitsound: Some(sample.hitsound.clone())
+            };
+            let mut malody_hs_note = to_grid(&temp_osu_note);
+            malody_hs_note.column = None;
+            malody_hs_note.r#type = Some(1);
+            malody_hs_note
+        });
+        new_notes.extend(sound_samples);
+
         McData {
             meta: mc_meta,
             time: beats_grid,
             effect: effects_grid,
             note: new_notes,
         }
+    }
+}
+
+impl<H> From<OsuData<H>> for McData where H: HitObject + Clone {
+    fn from(value: OsuData<H>) -> Self {
+        value.to_legacy().to_mc_data()
     }
 }

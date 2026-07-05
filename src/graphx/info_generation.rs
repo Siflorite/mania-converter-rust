@@ -116,8 +116,8 @@ pub fn generate_info_abstract(
                 length: length_str,
                 sr_gradient: format_sr_gradient(sr),
                 sr: format!("{:.02}", sr),
-                note_str: note_str,
-                ln_str: ln_str,
+                note_str,
+                ln_str,
                 len_pos: 190 + delta_len,
                 y_offset: i as u32 * CARD_HEIGHT,
             }

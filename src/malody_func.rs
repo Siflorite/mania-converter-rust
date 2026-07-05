@@ -7,7 +7,7 @@ use std::{
     ops::AddAssign,
 };
 
-use crate::osu_func::{OsuDataLegacy, OsuHitObjectLegacy, OsuMisc, OsuTimingPoint};
+use crate::osu_func::{OsuDataLegacy, OsuHitObjectLegacy, OsuMisc, OsuStoryboardSoundSample, OsuTimingPoint};
 
 pub use self::mcz2osz::*;
 use rayon::prelude::*;
@@ -254,11 +254,18 @@ impl McData {
         // 但是老版本在第一个
         // 为了适应大批量旧谱转换，使用filter代替
         // 鉴别方式为type字段存在且为1
-        let audio_note = self.note.iter().find(|n| n.r#type == Some(1));
+        // 音频音符包含起始音乐和所有的HitSounds，音频音符默认在0拍
+        let mut audio_notes = self.note.iter().filter(|n| n.r#type == Some(1)).collect::<Vec<_>>();
+        audio_notes.sort_unstable_by(|a, b| 
+            a.beat_to_float()
+                .partial_cmp(&b.beat_to_float())
+                .unwrap_or(std::cmp::Ordering::Equal)
+            );
+        let audio_note = audio_notes.iter().find(|note| note.beat_to_float() == 0.0);
+        let sound_effects = audio_notes.iter().filter(|note| note.beat_to_float() != 0.0);
         let audio = audio_note
-            .and_then(|n| n.sound.as_ref())
-            .unwrap_or(&String::new())
-            .clone();
+            .and_then(|n| n.sound.clone())
+            .unwrap_or(String::new());
 
         let mut osu_data = OsuDataLegacy {
             misc: OsuMisc {
@@ -286,6 +293,7 @@ impl McData {
                 od: 8.0,
                 background: self.meta.background.clone(),
             },
+            storyboard_samples: Vec::new(),
             timings: Vec::new(),
             notes: Vec::new(),
         };
@@ -404,6 +412,16 @@ impl McData {
                 }
             })
             .collect();
+
+        // 构建Sound Samples部分
+        osu_data.storyboard_samples = sound_effects.map(|hs| {
+            OsuStoryboardSoundSample {
+                time: beat_to_time(hs.beat_to_float()) as f64,
+                hitsound: hs.sound.clone().unwrap_or("".into()),
+                // Strangely, 这里的vol就没问题
+                volume: hs.vol.map_or(0u8, |v| v as u8),
+            }
+        }).collect();
 
         Ok(osu_data)
     }
