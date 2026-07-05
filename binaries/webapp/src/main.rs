@@ -10,7 +10,7 @@ use std::io::Write;
 use std::sync::Mutex;
 use uuid::Uuid;
 
-use mania_converter::malody_func::process_mcz_file;
+use mania_converter::malody::process_mcz_file;
 
 lazy_static! {
     #[derive(Debug)]

@@ -60,10 +60,7 @@ pub fn generate_info_abstract(
         .iter()
         .enumerate()
         .map(|(i, info)| {
-            let bg_name = match &info.bg_name {
-                Some(s) => s.as_str(),
-                None => "",
-            };
+            let bg_name = &info.bg_name;
             let bg_path = temp_dir_path.join(Path::new(bg_name));
             let default_path = env::current_dir().unwrap().join(Path::new(NO_IMAGE_PATH));
             let final_path = if bg_path.exists() {
