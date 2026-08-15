@@ -56,11 +56,12 @@ Then you can just use it in your project:
 ```rust
 use std::io;
 use std::path::{Path, PathBuf};
+use mania_converter::BeatMapInfo;
 use mania_converter::malody::process_mcz_file;
 
 // Application
-pub fn process(file_path: &str) -> io::Result<PathBuf> {
-    let mcz_path = Path::new(file_path)
+pub fn process(file_path: &str) -> io::Result<(PathBuf, Vec<BeatMapInfo>)> {
+    let mcz_path = Path::new(file_path);
     process_mcz_file(mcz_path, true)
 }
 ```

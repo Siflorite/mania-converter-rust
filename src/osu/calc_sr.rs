@@ -6,10 +6,7 @@ use std::collections::BTreeMap;
 use std::collections::HashSet;
 use std::io;
 
-fn preprocess(
-    osu_data: &OsuDataLegacy,
-    speed: f64,
-) -> Result<
+type PreprocessResult = Result<
     (
         f64,                       // x, a timing window param
         u32,                       // k, num of columns
@@ -21,7 +18,9 @@ fn preprocess(
         Vec<Vec<(u32, u32, u32)>>, // ln_seq_by_column, long note sequence grouped by column
     ),
     io::Error,
-> {
+>;
+
+fn preprocess(osu_data: &OsuDataLegacy, speed: f64) -> PreprocessResult {
     let time_multiplier = match speed {
         0.5..2.0 => 1.0 / speed,
         _ => 1.0,
@@ -172,9 +171,7 @@ fn get_key_usage(
         };
         let left_idx = base_corners.partition_point(|&x| x < start_time);
         let right_idx = base_corners.partition_point(|&x| x < end_time);
-        for idx in left_idx..right_idx {
-            key_usage[k as usize][idx] = true;
-        }
+        key_usage[k as usize][left_idx..right_idx].fill(true);
     }
 
     key_usage
@@ -190,7 +187,7 @@ fn get_key_usage_400(
     const COEFF: f64 = 3.75 / (400.0 * 400.0);
     for &(k, h, t) in note_seq {
         let k = k as usize;
-        let start_time = h.max(0);
+        let start_time = h;
         let end_time = if t < 0 { h } else { (t as u32).min(total - 1) };
         let left_400_idx = base_corners.partition_point(|&x| x < start_time.saturating_sub(400));
         let left_idx = base_corners.partition_point(|&x| x < start_time);
@@ -372,7 +369,7 @@ fn compute_j_bar(
 
     let j_bar_ks: Vec<Vec<f64>> = j_ks
         .iter()
-        .map(|j| smooth_on_corners(&base_corners, j, 500.0, 0.001, SmoothMode::Sum))
+        .map(|j| smooth_on_corners(base_corners, j, 500.0, 0.001, SmoothMode::Sum))
         .collect();
 
     let mut j_bar = vec![0.0; len];
@@ -461,7 +458,7 @@ fn compute_x_bar(
             n if n == col_u => Cow::Borrowed(&note_seq_by_column[col_u - 1]),
             n => Cow::Owned(merge_sorted(
                 &note_seq_by_column[n - 1],
-                &note_seq_by_column[n as usize],
+                &note_seq_by_column[n],
             )),
         };
 
@@ -549,9 +546,9 @@ fn compute_p_bar(
             let spike = 1000.0 * (0.02 * (4.0 / x - 24.0)).powf(0.25);
             let left_idx = base_corners.partition_point(|&t| t < start as f64);
             let right_idx = base_corners.partition_point(|&t| t <= start as f64);
-            for idx in left_idx..right_idx {
-                p_step[idx] += spike;
-            }
+            p_step[left_idx..right_idx]
+                .iter_mut()
+                .for_each(|v| *v += spike);
             continue;
         }
         let left_idx = base_corners.partition_point(|&t| t < start as f64);
@@ -560,7 +557,7 @@ fn compute_p_bar(
             continue;
         }
 
-        let ln_sum = ln_sum(start as u32, end as u32, ln_rep);
+        let ln_sum = ln_sum(start, end, ln_rep);
         let delta = 0.001 * delta_time as f64;
         let v = 1.0 + 0.006 * ln_sum;
         let b_val = stream_booster(delta);
@@ -584,9 +581,6 @@ fn compute_p_bar(
 
 fn compute_a_bar(
     col: u32,
-    _total: u32,
-    _x: f64,
-    _note_seq_by_column: &[Vec<(u32, u32, i32)>],
     active_columns: &[Vec<u32>],
     delta_ks: &[Vec<f64>],
     a_corners: &[f64],
@@ -676,9 +670,7 @@ fn compute_r_bar(
 
         let delta_r = 0.001 * (t_end - t_start) as f64;
         let r_val = 0.08 / delta_r.sqrt() / x * (1.0 + 0.8 * (i_list[i] + i_list[i + 1]));
-        for idx in left_idx..right_idx {
-            r_step[idx] = r_val;
-        }
+        r_step[left_idx..right_idx].fill(r_val);
     }
 
     smooth_on_corners(base_corners, &r_step, 500.0, 0.001, SmoothMode::Sum)
@@ -764,16 +756,7 @@ pub fn calculate_from_data(data: &OsuDataLegacy, speed: f64) -> io::Result<f64> 
     );
     let p_bar_interp = interp_values(&all_corners_f, &base_corners_f, &p_bar);
 
-    let a_bar = compute_a_bar(
-        k,
-        t,
-        x,
-        &note_seq_by_column,
-        &active_columns,
-        &delta_ks,
-        &a_corners_f,
-        &base_corners_f,
-    );
+    let a_bar = compute_a_bar(k, &active_columns, &delta_ks, &a_corners_f, &base_corners_f);
     let a_bar_interp = interp_values(&all_corners_f, &a_corners_f, &a_bar);
 
     let r_bar = compute_r_bar(k, t, x, &note_seq_by_column, &tail_seq, &base_corners_f);

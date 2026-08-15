@@ -106,9 +106,9 @@ pub struct OsuStoryboardSoundSample {
 /// We use `<layer_num> = 0` so that samples are always played.
 impl fmt::Display for OsuStoryboardSoundSample {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
+        writeln!(
             f,
-            "Sample,{},0,\"{}\",{}\n",
+            "Sample,{},0,\"{}\",{}",
             self.time, self.hitsound, self.volume
         )
     }
@@ -600,7 +600,10 @@ where
                         let time = parts[1].parse::<f64>();
                         let hitsound = parts[3].trim_matches('"');
                         let vol = parts[4].trim().parse::<u8>();
-                        if let Ok(time) = time && !hitsound.is_empty() && let Ok(volume) = vol {
+                        if let Ok(time) = time
+                            && !hitsound.is_empty()
+                            && let Ok(volume) = vol
+                        {
                             storyboard_samples.push(OsuStoryboardSoundSample {
                                 time,
                                 hitsound: hitsound.to_string(),
@@ -641,7 +644,7 @@ where
 
         // 构建 General 部分
         write!(writer, "osu file format {}\n\n[General]\n", H::version())?;
-        write!(writer, "AudioFilename: {}\n", self.misc.audio_file_name)?;
+        writeln!(writer, "AudioFilename: {}", self.misc.audio_file_name)?;
         write!(
             writer,
             "AudioLeadIn: 0\nPreviewTime: {}\nCountdown: 0\nSampleSet: Soft\n",
@@ -659,13 +662,13 @@ where
         )?;
 
         // 构建 Metadata 部分
-        write!(writer, "[Metadata]\n")?;
-        write!(writer, "Title:{}\n", self.misc.title)?;
-        write!(writer, "TitleUnicode:{}\n", self.misc.title_unicode)?;
-        write!(writer, "Artist:{}\n", self.misc.artist)?;
-        write!(writer, "ArtistUnicode:{}\n", self.misc.artist_unicode)?;
-        write!(writer, "Creator:{}\n", self.misc.creator)?;
-        write!(writer, "Version:{}\n", self.misc.version)?;
+        writeln!(writer, "[Metadata]")?;
+        writeln!(writer, "Title:{}", self.misc.title)?;
+        writeln!(writer, "TitleUnicode:{}", self.misc.title_unicode)?;
+        writeln!(writer, "Artist:{}", self.misc.artist)?;
+        writeln!(writer, "ArtistUnicode:{}", self.misc.artist_unicode)?;
+        writeln!(writer, "Creator:{}", self.misc.creator)?;
+        writeln!(writer, "Version:{}", self.misc.version)?;
         write!(
             writer,
             "Source:\nTags:\nBeatmapID:{}\nBeatmapSetID:{}\n\n",
@@ -673,7 +676,7 @@ where
         )?;
 
         // 构建 Difficulty 部分
-        write!(writer, "[Difficulty]\n")?;
+        writeln!(writer, "[Difficulty]")?;
         let od_str = if self.misc.od.trunc() == self.misc.od {
             format!("{:.0}", self.misc.od)
         } else {
@@ -688,7 +691,7 @@ where
         // 构建 Events 部分
         write!(writer, "[Events]\n//Background and Video events\n")?;
         if !self.misc.background.is_empty() {
-            write!(writer, "0,0,\"{}\",0,0\n", self.misc.background)?;
+            writeln!(writer, "0,0,\"{}\",0,0", self.misc.background)?;
         }
         write!(
             writer,
@@ -702,7 +705,7 @@ where
             writer,
             "//Storyboard Layer 3 (Foreground)\n//Storyboard Layer 4 (Overlay)\n"
         )?;
-        write!(writer, "//Storyboard Sound Samples\n")?;
+        writeln!(writer, "//Storyboard Sound Samples")?;
         // OsuStoryboardSoundSample now implements fmt::Display
         for sample in self.storyboard_samples.iter() {
             write!(writer, "{}", sample)?;
@@ -997,11 +1000,7 @@ impl OsuDataLegacy {
             }
         };
 
-        let mut new_notes = self
-            .notes
-            .iter()
-            .map(|n| to_grid(n))
-            .collect::<Vec<_>>();
+        let mut new_notes = self.notes.iter().map(&to_grid).collect::<Vec<_>>();
 
         // Malody最后一个音符是开始时间信息
         new_notes.push(Note {

@@ -1,0 +1,68 @@
+#!/bin/sh
+# pre-commit hook:
+#   1) cargo fmt            - auto-format + auto-stage
+#   2) cargo clippy --fix   - auto-fix machine-applicable warnings + auto-stage
+#   3) cargo fmt            - re-format after fixes
+#   4) cargo clippy gate    - remaining warnings abort the commit
+# Any FAIL aborts the commit.
+
+GREEN='\033[32m'
+RED='\033[31m'
+BOLD='\033[1m'
+NC='\033[0m'
+passed=0
+failed=0
+
+say()  { printf '%b\n' "$1"; }
+pass() { say "    ${GREEN}[PASS]${NC} $1"; passed=$((passed+1)); }
+fail() { say "    ${RED}[FAIL]${NC} $1"; failed=$((failed+1)); }
+
+say ""
+say "${BOLD}== pre-commit checks ==${NC}"
+
+say "  [1/4] cargo fmt --all"
+if cargo fmt --all; then
+    if git add -u; then
+        pass "cargo fmt  (fixes auto-staged)"
+    else
+        fail "cargo fmt  (staging failed)"
+    fi
+else
+    fail "cargo fmt"
+fi
+
+say "  [2/4] cargo clippy --fix"
+if cargo clippy --fix --workspace --allow-dirty --allow-staged --all-targets --all-features; then
+    if git add -u; then
+        pass "cargo clippy --fix  (fixes auto-staged)"
+    else
+        fail "cargo clippy --fix  (staging failed)"
+    fi
+else
+    fail "cargo clippy --fix"
+fi
+
+say "  [3/4] cargo fmt --all"
+if cargo fmt --all; then
+    git add -u
+    pass "cargo fmt  (re-format after fixes)"
+else
+    fail "cargo fmt"
+fi
+
+say "  [4/4] cargo clippy --workspace --all-targets --all-features -- -D warnings"
+if cargo clippy --workspace --all-targets --all-features -- -D warnings; then
+    pass "cargo clippy"
+else
+    fail "cargo clippy"
+fi
+
+say ""
+say "  Result: ${GREEN}${passed} passed${NC}, ${RED}${failed} failed${NC}"
+if [ "$failed" -eq 0 ]; then
+    say "  ${GREEN}All checks passed - creating commit.${NC}"
+    exit 0
+else
+    say "  ${RED}Commit aborted. Fix the failing checks, then: git add . && git commit${NC}"
+    exit 1
+fi

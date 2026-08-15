@@ -117,7 +117,7 @@ pub(super) fn find_next_note_in_column(
     // 在当前列的时间序列中二分查找
     let idx = times.binary_search(&h).unwrap_or_else(|i| i);
     if idx + 1 < column_notes.len() {
-        column_notes[idx + 1].clone()
+        column_notes[idx + 1]
     } else {
         // 返回默认值
         (0, 1e9 as u32, 1e9 as i32)

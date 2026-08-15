@@ -14,7 +14,7 @@ use zip::ZipArchive;
 use crate::graphx::generate_osz_info;
 
 pub fn parse_whole_dir_osz(dir: &str) -> io::Result<Vec<String>> {
-    let current_dir = if dir == "" { "." } else { dir };
+    let current_dir = if dir.is_empty() { "." } else { dir };
     let processed: Vec<String> = WalkDir::new(current_dir)
         .into_iter()
         .par_bridge()

@@ -21,3 +21,6 @@ handlebars = "6.3"
 resvg = "0.45"
 lazy_static = "1.5"
 anyhow = "1.0.100"
+
+[dev-dependencies]
+cargo-husky = { version = "1.5", features = ["user-hooks"] }

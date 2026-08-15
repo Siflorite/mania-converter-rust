@@ -144,7 +144,7 @@ pub fn generate_info_abstract(
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
 
     let mut pixmap = tiny_skia::Pixmap::new(1200, total_height)
-        .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "Failed to create pixmap"))?;
+        .ok_or_else(|| io::Error::other("Failed to create pixmap"))?;
 
     resvg::render(&tree, tiny_skia::Transform::default(), &mut pixmap.as_mut());
 
@@ -158,9 +158,7 @@ pub fn generate_info_abstract(
     let pic_name = format!("{}.png", santized_name);
     let pic_path = save_pic_path.join(pic_name);
 
-    pixmap
-        .save_png(&pic_path)
-        .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+    pixmap.save_png(&pic_path).map_err(io::Error::other)?;
 
     Ok(pic_path)
 }
@@ -176,7 +174,7 @@ fn format_bpm_str(min_bpm: f64, max_bpm: Option<f64>) -> String {
         .to_string();
 
     if (m_bpm * 10.0).round() as i32 == (min_bpm * 10.0).round() as i32 {
-        format!("{}", min_bpm_str)
+        min_bpm_str.to_string()
     } else {
         let max_bpm_str = format!("{:.1}", m_bpm)
             .trim_matches('0')

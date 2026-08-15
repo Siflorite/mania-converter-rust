@@ -17,7 +17,7 @@ use crate::osu::{OsuDataLegacy, OsuHitObjectLegacy, OsuMisc, OsuTimingPoint};
 /// Convert all .mcz files under given dir to .osz files.  
 /// "." or "" will set dir to the Run Directory.
 pub fn process_whole_dir_mcz(dir: &str, b_calc_sr: bool, b_print_results: bool) -> io::Result<()> {
-    let current_dir = if dir == "" { "." } else { dir }; // 当前目录
+    let current_dir = if dir.is_empty() { "." } else { dir }; // 当前目录
     // let results_queue = Arc::new(SegQueue::<(PathBuf, Vec<BeatMapInfo>)>::new());
 
     // 遍历当前目录下的所有文件
@@ -214,7 +214,7 @@ fn process_mcz_core(
 /// Only use it when you can handle the audio and BG related to this .mc file.<br>
 /// As osu won't accept non-ascii filenames, you need to do the sanitizing stuff.
 pub fn process_mc_file(path: &Path) -> io::Result<PathBuf> {
-    let mc_data = analyze_mc_file(&path)?;
+    let mc_data = analyze_mc_file(path)?;
     let mut osu_path = PathBuf::from(&path);
     // 获取文件名部分（带后缀）
     if let Some(file_stem) = osu_path.file_stem() {
@@ -241,10 +241,10 @@ pub fn process_mc_file(path: &Path) -> io::Result<PathBuf> {
 /// The function used in this crate
 fn process_mc_file_self<F>(mc_file_path: &Path, callback: F) -> io::Result<(PathBuf, OsuDataLegacy)>
 where
-    F: Fn(&Path, &Path) -> (),
+    F: Fn(&Path, &Path),
 {
     // 解析并转换 .mc 文件为 .osu 文件
-    let mut mc_data = match analyze_mc_file(&mc_file_path) {
+    let mut mc_data = match analyze_mc_file(mc_file_path) {
         Ok(data) => data,
         Err(e) => {
             eprintln!("Error analyzing file {:?}: {}", mc_file_path, e);
@@ -255,7 +255,7 @@ where
     // 对 mc_data 中的图片和音频文件名进行替代，并验证文件存在
     let sanitized_background = sanitize_filename(&mc_data.meta.background);
     let sanitized_audio = sanitize_filename(
-        &mc_data
+        mc_data
             .note
             .last()
             .and_then(|n| n.sound.as_ref())
@@ -274,11 +274,11 @@ where
     }
 
     mc_data.meta.background = sanitized_background;
-    if let Some(note) = mc_data.note.last() {
-        if let Some(_sound) = &note.sound {
-            let len = mc_data.note.len();
-            mc_data.note[len - 1].sound = Some(sanitized_audio);
-        }
+    if let Some(note) = mc_data.note.last()
+        && let Some(_sound) = &note.sound
+    {
+        let len = mc_data.note.len();
+        mc_data.note[len - 1].sound = Some(sanitized_audio);
     }
     // 转换 .mc 文件为 .osu 文件
     let mut osu_path = PathBuf::from(&mc_file_path);
@@ -386,8 +386,8 @@ fn convert_mc_to_osu(mc_data: &McData) -> io::Result<Option<OsuDataLegacy>> {
     // 取第一个BPM为基准BPM
     let bpm_base = mc_data
         .time
-        .get(0)
-        .map(|t| t.bpm as f64)
+        .first()
+        .map(|t| t.bpm)
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "Missing BPM data"))?;
     let interval_base = 60000_f64 / bpm_base;
 
@@ -395,7 +395,7 @@ fn convert_mc_to_osu(mc_data: &McData) -> io::Result<Option<OsuDataLegacy>> {
 
     for (index, item) in mc_data.time.iter().enumerate() {
         if index == 0 {
-            let start_beat = (offset_ms as f64 / interval_base).ceil();
+            let start_beat = (offset_ms / interval_base).ceil();
             let start_time = (start_beat * interval_base - offset_ms).floor() as u32;
 
             bpm_list.push((start_beat, start_time, interval_base));
@@ -506,13 +506,13 @@ fn convert_mc_to_osu(mc_data: &McData) -> io::Result<Option<OsuDataLegacy>> {
         .map(|item| {
             let item_time = beat_to_time(item.beat_to_float());
             let column = item.column.unwrap_or(0);
-            let x_pos = ((column as f64 + 0.5) * column_factor as f64).floor() as u32;
+            let x_pos = ((column as f64 + 0.5) * column_factor).floor() as u32;
             // 处理 item 的 endbeat
             if let Some(_end_beat) = &item.endbeat {
                 let item_beat_end = item.end_beat_to_float();
                 let item_end_time = beat_to_time(item_beat_end);
                 OsuHitObjectLegacy {
-                    x_pos: x_pos,
+                    x_pos,
                     time: item_time,
                     end_time: Some(item_end_time),
                     volume: item.vol.map_or(0u8, |x| x as u8),
@@ -520,7 +520,7 @@ fn convert_mc_to_osu(mc_data: &McData) -> io::Result<Option<OsuDataLegacy>> {
                 }
             } else {
                 OsuHitObjectLegacy {
-                    x_pos: x_pos,
+                    x_pos,
                     time: item_time,
                     end_time: None,
                     volume: item.vol.map_or(0u8, |x| x as u8),
@@ -536,7 +536,7 @@ fn convert_mc_to_osu(mc_data: &McData) -> io::Result<Option<OsuDataLegacy>> {
 fn serialize_osu_data(writer: &mut BufWriter<File>, osu_data: &OsuDataLegacy) -> io::Result<()> {
     // 构建 General 部分
     write!(writer, "osu file format v14\n\n[General]\n")?;
-    write!(writer, "AudioFilename: {}\n", osu_data.misc.audio_file_name)?;
+    writeln!(writer, "AudioFilename: {}", osu_data.misc.audio_file_name)?;
     write!(
         writer,
         "AudioLeadIn: 0\nPreviewTime: {}\nCountdown: 0\nSampleSet: Soft\n",
@@ -554,13 +554,13 @@ fn serialize_osu_data(writer: &mut BufWriter<File>, osu_data: &OsuDataLegacy) ->
     )?;
 
     // 构建 Metadata 部分
-    write!(writer, "[Metadata]\n")?;
-    write!(writer, "Title:{}\n", osu_data.misc.title)?;
-    write!(writer, "TitleUnicode:{}\n", osu_data.misc.title_unicode)?;
-    write!(writer, "Artist:{}\n", osu_data.misc.artist)?;
-    write!(writer, "ArtistUnicode:{}\n", osu_data.misc.artist_unicode)?;
-    write!(writer, "Creator:{}\n", osu_data.misc.creator)?;
-    write!(writer, "Version:{}\n", osu_data.misc.version)?;
+    writeln!(writer, "[Metadata]")?;
+    writeln!(writer, "Title:{}", osu_data.misc.title)?;
+    writeln!(writer, "TitleUnicode:{}", osu_data.misc.title_unicode)?;
+    writeln!(writer, "Artist:{}", osu_data.misc.artist)?;
+    writeln!(writer, "ArtistUnicode:{}", osu_data.misc.artist_unicode)?;
+    writeln!(writer, "Creator:{}", osu_data.misc.creator)?;
+    writeln!(writer, "Version:{}", osu_data.misc.version)?;
     write!(
         writer,
         "Source:\nTags:\nBeatmapID:{}\nBeatmapSetID:{}\n\n",
@@ -568,7 +568,7 @@ fn serialize_osu_data(writer: &mut BufWriter<File>, osu_data: &OsuDataLegacy) ->
     )?;
 
     // 构建 Difficulty 部分
-    write!(writer, "[Difficulty]\n")?;
+    writeln!(writer, "[Difficulty]")?;
     let od_str = if osu_data.misc.od.trunc() == osu_data.misc.od {
         format!("{:.0}", osu_data.misc.od)
     } else {
@@ -583,7 +583,7 @@ fn serialize_osu_data(writer: &mut BufWriter<File>, osu_data: &OsuDataLegacy) ->
     // 构建 Events 部分
     write!(writer, "[Events]\n//Background and Video events\n")?;
     if !osu_data.misc.background.is_empty() {
-        write!(writer, "0,0,\"{}\",0,0\n", osu_data.misc.background)?;
+        writeln!(writer, "0,0,\"{}\",0,0", osu_data.misc.background)?;
     }
     write!(
         writer,
@@ -619,7 +619,7 @@ fn serialize_osu_data(writer: &mut BufWriter<File>, osu_data: &OsuDataLegacy) ->
         })
         .collect();
 
-    write!(writer, "[TimingPoints]\n")?;
+    writeln!(writer, "[TimingPoints]")?;
     writer.write_all(timing_points.join("\n").as_bytes())?;
     write!(writer, "\n\n[HitObjects]\n")?;
     writer.write_all(hit_objects.join("\n").as_bytes())?;
