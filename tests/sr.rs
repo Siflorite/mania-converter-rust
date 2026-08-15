@@ -1,11 +1,9 @@
 use mania_converter::osu::{OsuDataLegacy, OsuHitObjectLegacy, calculate_from_data};
-use mania_converter::{graphx::generate_info_abstract, malody::process_whole_dir_mcz};
 use std::io::{self, Write};
-use std::path::PathBuf;
 
 #[test]
 fn main() -> io::Result<()> {
-    let file = "./test_stuff/zombie_u.osu";
+    let file = "./tests/beatmaps/zombie_u.osu";
     let data = mania_converter::osu::OsuDataV128::from_file(file)?;
     let col_x = [42, 128, 213, 298, 384, 469];
     let p: Vec<_> = data

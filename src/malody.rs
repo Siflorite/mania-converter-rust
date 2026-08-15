@@ -423,7 +423,7 @@ impl McData {
                     let item_beat_end = item.end_beat_to_float();
                     let item_end_time = beat_to_time(item_beat_end);
                     OsuHitObjectLegacy {
-                        x_pos: x_pos,
+                        x_pos,
                         time: item_time,
                         end_time: Some(item_end_time),
                         volume: item.vol.map_or(0u8, |_| 100u8), // Malody <= 4.3.7 有bug，所有vol如果存在就是100，实际值无效
@@ -431,7 +431,7 @@ impl McData {
                     }
                 } else {
                     OsuHitObjectLegacy {
-                        x_pos: x_pos,
+                        x_pos,
                         time: item_time,
                         end_time: None,
                         volume: item.vol.map_or(0u8, |_| 100u8),

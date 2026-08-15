@@ -139,7 +139,7 @@ fn osu_to_grid_sv() -> Result<()> {
         })
         .collect::<Vec<_>>();
     println!("{:?}", timings);
-    println!("");
+    println!();
 
     let beat_counts = timings
         .windows(2)
@@ -196,14 +196,10 @@ fn osu_to_grid_sv() -> Result<()> {
         }
     };
 
-    let new_notes = notes
-        .iter()
-        .enumerate()
-        .map(|(_i, n)| to_grid(n))
-        .collect::<Vec<_>>();
+    let new_notes = notes.iter().map(&to_grid).collect::<Vec<_>>();
 
-    for i in 900..notes.len() - 1 {
-        let _ = to_grid(&notes[i]);
+    for note in &notes[900..notes.len() - 1] {
+        let _ = to_grid(note);
     }
 
     for (note, new_note) in mc_data.note.iter().zip(new_notes.iter()) {
@@ -265,9 +261,11 @@ fn test_osu_legacy_to_mc() -> std::io::Result<()> {
 
 #[test]
 fn parse_osu_file_with_hitsound() {
+    std::fs::create_dir_all("./target/test-output").unwrap();
+
     let osu_hs_file = "./tests/beatmaps/hitsound_test/Never-Ending Performance/HOYO-MiX - Never-Ending Performance (_IceRain) [[14]].osu";
-    let reconverted_mc = "./test_stuff/hs/regular.mc";
-    let reconverted_osu = "./test_stuff/hs/regular.osu";
+    let reconverted_mc = "./target/test-output/regular.mc";
+    let reconverted_osu = "./target/test-output/regular.osu";
 
     let osu_data = OsuDataV128::from_file(osu_hs_file).unwrap();
     println!("{:?}", osu_data);
@@ -284,9 +282,11 @@ fn parse_osu_file_with_hitsound() {
 
 #[test]
 fn parse_piano() {
+    std::fs::create_dir_all("./target/test-output").unwrap();
+
     let osu_hs_file = "./tests/beatmaps/hitsound_test/2336416_Jerico_-_Soaring/Jerico - Soaring (_IceRain) [Nostalgia].osu";
-    let reconverted_mc = "./test_stuff/hs/wtf.mc";
-    let reconverted_osu = "./test_stuff/hs/wtf.osu";
+    let reconverted_mc = "./target/test-output/wtf.mc";
+    let reconverted_osu = "./target/test-output/wtf.osu";
 
     let osu_data = OsuDataV128::from_file(osu_hs_file).unwrap();
     let osu_data_legacy = OsuDataLegacy::from(osu_data);
@@ -302,9 +302,11 @@ fn parse_piano() {
 
 #[test]
 fn double_convert() {
+    std::fs::create_dir_all("./target/test-output").unwrap();
+
     let malody_hs_file = "./tests/beatmaps/hitsound_test/1116 DJ TOTTO VS TOTTO - Vajra/106641 Biemote - 6K SPECIAL(Remake) Lv.31.mc";
-    let converted_osu = "./test_stuff/hs/mc_converted.osu";
-    let converted_mc = "./test_stuff/hs/mc_converted.mc";
+    let converted_osu = "./target/test-output/mc_converted.osu";
+    let converted_mc = "./target/test-output/mc_converted.mc";
 
     let mc_data = McData::from_file(malody_hs_file).unwrap();
     let osu_data = mc_data.to_osu_data().unwrap();

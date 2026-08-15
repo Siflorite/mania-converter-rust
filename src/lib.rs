@@ -18,7 +18,7 @@ use std::fmt;
 /// use mania_converter::osu::{HitObject, OsuDataLegacy};
 ///
 /// let osu_data = OsuDataLegacy::from_file("./tests/beatmaps/MIssionary - Shuen Kara Inochi o Sukuu.osu").unwrap();
-/// let beatmap_info = osu_data.to_beatmap_info(false);
+/// let beatmap_info = osu_data.get_beatmap_info(false);
 /// println!("{}", beatmap_info);
 ///
 /// let regular_notes_num = osu_data
