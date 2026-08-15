@@ -3,7 +3,9 @@ use std::io::BufWriter;
 
 use anyhow::Result;
 use mania_converter::malody::{Beat, McData, Note};
-use mania_converter::osu::{OsuDataLegacy, OsuDataV128, OsuHitObjectLegacy, OsuTimingPoint, calculate_from_data};
+use mania_converter::osu::{
+    OsuDataLegacy, OsuDataV128, OsuHitObjectLegacy, OsuTimingPoint, calculate_from_data,
+};
 
 #[test]
 fn osu_to_grid_nosv() -> Result<()> {

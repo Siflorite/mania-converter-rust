@@ -317,8 +317,8 @@ impl McData {
         // 取第一个BPM为基准BPM
         let bpm_base = self
             .time
-            .get(0)
-            .map(|t| t.bpm as f64)
+            .first()
+            .map(|t| t.bpm)
             .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "Missing BPM data"))?;
         let interval_base = 60000_f64 / bpm_base;
 
@@ -326,10 +326,26 @@ impl McData {
 
         for (index, item) in self.time.iter().enumerate() {
             if index == 0 {
-                let start_beat = (offset_ms as f64 / interval_base).ceil();
-                let start_time = (start_beat * interval_base - offset_ms).floor() as u32;
+                // 原先的计算是：考虑Malody的offset为x，那么Malody第0拍的音乐时间为-x
+                // 因此计算要经过至少几个interval可以达到正时间，记为第一个timing point
+                // 但是这样会导致小节开始线偏移。
+                // 因此解决方案是，默认按4/4拍处理，第一个timing point就是离第一个物件最近的4的整倍数的拍子
+                // 如果找不到就fallback到原处理
+                let start_beat = (offset_ms / interval_base).ceil();
 
-                bpm_list.push((start_beat, start_time, interval_base));
+                // 记得过滤掉HS虚拟note
+                let first_note_beat = self
+                    .note
+                    .iter()
+                    .filter(|n| n.r#type != Some(1))
+                    .map(|n| n.beat_to_float())
+                    .min_by(|a, b| a.total_cmp(b))
+                    .unwrap_or(0.0);
+                let first_timepoint_beat = ((first_note_beat / 4.0).floor() * 4.0).max(start_beat);
+                let first_timepoint_time =
+                    (first_timepoint_beat * interval_base - offset_ms).floor() as u32;
+
+                bpm_list.push((first_timepoint_beat, first_timepoint_time, interval_base));
                 continue;
             }
             let current_beat = item.beat_to_float();
@@ -401,7 +417,7 @@ impl McData {
             .map(|item| {
                 let item_time = beat_to_time(item.beat_to_float());
                 let column = item.column.unwrap_or(0);
-                let x_pos = ((column as f64 + 0.5) * column_factor as f64).floor() as u32;
+                let x_pos = ((column as f64 + 0.5) * column_factor).floor() as u32;
                 // 处理 item 的 endbeat
                 if let Some(_end_beat) = &item.endbeat {
                     let item_beat_end = item.end_beat_to_float();

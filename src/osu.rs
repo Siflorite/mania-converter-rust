@@ -7,7 +7,6 @@ pub mod osz_func;
 
 pub use calc_sr::{calculate_from_data, calculate_from_file};
 pub use osz_func::{parse_osz_file, parse_osz_postprocess, parse_whole_dir_osz};
-use rayon::prelude::*;
 use std::fmt;
 use std::fs::File;
 use std::io::{self, BufRead, BufReader, BufWriter, Write};
@@ -151,7 +150,7 @@ impl OsuTimingPoint {
 
         let time = parts[0].parse().ok()?;
         let val = parts[1].parse().ok()?;
-        let is_timing = parts.get(6).map_or(true, |&x| x == "1");
+        let is_timing = parts.get(6).is_none_or(|&x| x == "1");
 
         Some(Self {
             time,
@@ -361,8 +360,8 @@ where
     }
 
     fn get_hitsound(&self) -> &str {
-        if self.hitsound.is_some() {
-            self.hitsound.as_ref().unwrap()
+        if let Some(hitsound) = &self.hitsound {
+            hitsound
         } else {
             ""
         }
@@ -601,11 +600,11 @@ where
                         let time = parts[1].parse::<f64>();
                         let hitsound = parts[3].trim_matches('"');
                         let vol = parts[4].trim().parse::<u8>();
-                        if time.is_ok() && !hitsound.is_empty() && vol.is_ok() {
+                        if let Ok(time) = time && !hitsound.is_empty() && let Ok(volume) = vol {
                             storyboard_samples.push(OsuStoryboardSoundSample {
-                                time: time.unwrap(),
+                                time,
                                 hitsound: hitsound.to_string(),
-                                volume: vol.unwrap(),
+                                volume,
                             });
                         }
                     }
@@ -711,11 +710,11 @@ where
 
         // 构建 TimingPoints 部分
         // OsuTimingPoint now implements fmt::Display
-        let timing_points: Vec<_> = self.timings.par_iter().map(|tp| tp.to_string()).collect();
+        let timing_points: Vec<_> = self.timings.iter().map(|tp| tp.to_string()).collect();
 
         // 构建 HitObjects 部分
         // OsuHitObject now implements fmt::Display
-        let hit_objects: Vec<_> = self.notes.par_iter().map(H::to_string).collect();
+        let hit_objects: Vec<_> = self.notes.iter().map(H::to_string).collect();
 
         write!(writer, "\n[TimingPoints]\n")?;
         writer.write_all(timing_points.join("\n").as_bytes())?;
@@ -763,16 +762,16 @@ where
         let (min_time, max_time) = self
             .notes
             .iter()
-            .filter_map(|n| {
+            .map(|n| {
                 let start = n.get_time().into();
                 let end = n.get_end_time().map(|t| t.into()).unwrap_or(start);
-                Some((start, end.max(start)))
+                (start, end.max(start))
             })
             .fold((f64::INFINITY, 0f64), |(min, max), (s, e)| {
                 (min.min(s), max.max(e))
             });
-        let duration = (max_time - min_time).max(0.0) as u32;
-        duration
+
+        (max_time - min_time).max(0.0) as u32
     }
 
     /// Gets beatmap info.
@@ -798,9 +797,9 @@ where
             beatmap_id: self.misc.beatmap_id,
             beatmap_set_id: self.misc.beatmap_set_id,
             column_count: self.misc.circle_size as u8,
-            min_bpm: min_bpm,
-            max_bpm: max_bpm,
-            length: length,
+            min_bpm,
+            max_bpm,
+            length,
             sr: if b_calc_sr {
                 match calculate_from_data(&self.clone().to_legacy(), 1.0) {
                     Ok(sr) => Some(sr.max(0.0)),
@@ -810,7 +809,7 @@ where
                 None
             },
             note_count: note_count - ln_count,
-            ln_count: ln_count,
+            ln_count,
             bg_name: self.misc.background.clone(),
         }
     }
@@ -866,7 +865,7 @@ impl OsuDataLegacy {
             .iter()
             .filter(|t| t.is_timing)
             .collect::<Vec<_>>();
-        let original_offset = original_timings.first().map_or(0.0, |t| t.time as f64);
+        let original_offset = original_timings.first().map_or(0.0, |t| t.time);
         // Uses 500ms as default interval (BPM 120) if there is no timing points, avoiding division by zero.
         let original_interval = original_timings
             .first()
@@ -1001,8 +1000,7 @@ impl OsuDataLegacy {
         let mut new_notes = self
             .notes
             .iter()
-            .enumerate()
-            .map(|(_i, n)| to_grid(n))
+            .map(|n| to_grid(n))
             .collect::<Vec<_>>();
 
         // Malody最后一个音符是开始时间信息
@@ -1017,22 +1015,19 @@ impl OsuDataLegacy {
         });
 
         // 以及自动播放的HitSound，对应osu的Storyboard Sound Samples
-        let sound_samples = osu_data_normalized
-            .storyboard_samples
-            .iter()
-            .map(|sample| {
-                let temp_osu_note = OsuHitObjectLegacy {
-                    x_pos: 0,
-                    time: sample.time as u32,
-                    end_time: None,
-                    volume: sample.volume,
-                    hitsound: Some(sample.hitsound.clone()),
-                };
-                let mut malody_hs_note = to_grid(&temp_osu_note);
-                malody_hs_note.column = None;
-                malody_hs_note.r#type = Some(1);
-                malody_hs_note
-            });
+        let sound_samples = osu_data_normalized.storyboard_samples.iter().map(|sample| {
+            let temp_osu_note = OsuHitObjectLegacy {
+                x_pos: 0,
+                time: sample.time as u32,
+                end_time: None,
+                volume: sample.volume,
+                hitsound: Some(sample.hitsound.clone()),
+            };
+            let mut malody_hs_note = to_grid(&temp_osu_note);
+            malody_hs_note.column = None;
+            malody_hs_note.r#type = Some(1);
+            malody_hs_note
+        });
         new_notes.extend(sound_samples);
 
         McData {
