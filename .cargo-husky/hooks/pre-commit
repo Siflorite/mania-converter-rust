@@ -44,8 +44,11 @@ fi
 
 say "  [3/4] cargo fmt --all"
 if cargo fmt --all; then
-    git add -u
-    pass "cargo fmt  (re-format after fixes)"
+    if git add -u; then
+        pass "cargo fmt  (re-format after fixes)"
+    else
+        fail "cargo fmt  (staging failed)"
+    fi
 else
     fail "cargo fmt"
 fi

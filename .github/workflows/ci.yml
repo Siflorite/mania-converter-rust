@@ -2,7 +2,7 @@ name: ci
 
 on:
   push:
-    branches: ["**"]
+    branches: [main, "develop/**"]
   pull_request:
 
 permissions:
@@ -16,8 +16,12 @@ jobs:
   ci:
     name: fmt / clippy / test / doc
     runs-on: ubuntu-latest
+    env:
+      CARGO_HUSKY_DONT_INSTALL_HOOKS: "true"
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy

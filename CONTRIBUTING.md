@@ -34,10 +34,10 @@ feature/xxx ──┘
 
 ```sh
 cargo build --all-features
-cargo test  --all-features
+cargo test  --workspace --all-features
 ```
 
-- Local git hooks install themselves automatically via `cargo-husky` (a dev-dependency) the first time you run `cargo test` / `cargo check` / `cargo build` — no manual setup. They run on every commit, see §4.
+- Local git hooks install themselves automatically via `cargo-husky` (a dev-dependency) the first time you run `cargo test` — no manual setup. They run on every commit, see §4.
 
 ## 3. How to contribute (everyone, maintainer included)
 
@@ -60,19 +60,21 @@ Every PR and every push must pass:
 
 ```sh
 cargo fmt --all --check
-cargo clippy --all-targets --all-features -- -D warnings
-cargo test --all-features
-cargo doc --no-deps
+cargo clippy --workspace --all-targets --all-features -- -D warnings
+cargo test --workspace --all-features
+cargo doc --workspace --no-deps
 ```
 
 ### Local pre-commit hook
 
-A pre-commit hook is installed automatically by `cargo-husky` (a dev-dependency) the first time you run `cargo test` / `cargo check` / `cargo build` — nothing to install by hand. On every `git commit` it runs and reports each step with `[PASS]` / `[FAIL]`:
+A pre-commit hook is installed automatically by `cargo-husky` (a dev-dependency) the first time you run `cargo test` — nothing to install by hand. On every `git commit` it runs and reports each step with `[PASS]` / `[FAIL]`:
 
 1. `cargo fmt --all` — formatting is fixed and staged automatically;
-2. `cargo clippy --fix` — machine-applicable warnings are fixed and staged automatically;
+2. `cargo clippy --workspace --fix` — machine-applicable warnings are fixed and staged automatically;
 3. `cargo fmt --all` — re-format after the fixes;
-4. `cargo clippy --all-targets --all-features -- -D warnings` — remaining warnings abort the commit.
+4. `cargo clippy --workspace --all-targets --all-features -- -D warnings` — remaining warnings abort the commit.
+
+**Warning** The pre-commit hook will perform `git add -u` after `cargo fmt` and `cargo clippy --fix`, so that users can just do `git commit` if pre-commit check fails an this hook automatically fixed all problems. If you have made changes unrelated to a commit, stash it before every commit so as not to trigger `git add -u` in this hook.
 
 When a step fails, the commit is cancelled: fix the issue and run `git add . && git commit` again. In a hurry, `git commit --no-verify` skips the hook — CI still runs the gates above and remains the source of truth.
 
@@ -144,10 +146,10 @@ feature/xxx ──┘
 
 ```sh
 cargo build --all-features
-cargo test  --all-features
+cargo test  --workspace --all-features
 ```
 
-- 本地 git 钩子通过 `cargo-husky`（dev-dependency）自动安装：首次运行 `cargo test` / `cargo check` / `cargo build` 时即装好，无需手动配置。每次 commit 都会运行，见第 4 节。
+- 本地 git 钩子通过 `cargo-husky`（dev-dependency）自动安装：首次运行 `cargo test` 时即装好，无需手动配置。每次 commit 都会运行，见第 4 节。
 
 ## 3. 贡献流程（所有人适用，包括维护者）
 
@@ -170,19 +172,21 @@ cargo test  --all-features
 
 ```sh
 cargo fmt --all --check
-cargo clippy --all-targets --all-features -- -D warnings
-cargo test --all-features
-cargo doc --no-deps
+cargo clippy --workspace --all-targets --all-features -- -D warnings
+cargo test --workspace --all-features
+cargo doc --workspace --no-deps
 ```
 
 ### 本地 pre-commit 钩子
 
-本地钩子由 `cargo-husky`（dev-dependency）自动安装：首次运行 `cargo test` / `cargo check` / `cargo build` 时即装好，无需手动配置。每次 `git commit` 都会运行并逐项报告 `[PASS]` / `[FAIL]`：
+本地钩子由 `cargo-husky`（dev-dependency）自动安装：首次运行 `cargo test` 时即装好，无需手动配置。每次 `git commit` 都会运行并逐项报告 `[PASS]` / `[FAIL]`：
 
 1. `cargo fmt --all` — 自动修复格式并暂存；
-2. `cargo clippy --fix` — 自动修复机器可修的警告并暂存；
+2. `cargo clippy --workspace --fix` — 自动修复机器可修的警告并暂存；
 3. `cargo fmt --all` — 修复后重新格式化；
-4. `cargo clippy --all-targets --all-features -- -D warnings` — 剩余警告将中止 commit。
+4. `cargo clippy --workspace --all-targets --all-features -- -D warnings` — 剩余警告将中止 commit。
+
+**警告** pre-commit钩子在`cargo fmt`和`cargo clippy --fix`后会自动调用`git add -u`更新追踪的文件，如果钩子正好修复了所有的问题，可以直接使用`git commit`指令。如果在开发过程中有与当前commit无关的修改，请务必先stash，以避免触发钩子的`git add -u`而误添加进commit。
 
 任一步失败 commit 都会被取消：修复后重新 `git add . && git commit` 即可。赶时间可用 `git commit --no-verify` 跳过钩子——CI 仍会执行上面的门禁，CI 才是最终裁判。
 

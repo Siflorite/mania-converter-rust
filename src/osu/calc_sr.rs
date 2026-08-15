@@ -171,7 +171,9 @@ fn get_key_usage(
         };
         let left_idx = base_corners.partition_point(|&x| x < start_time);
         let right_idx = base_corners.partition_point(|&x| x < end_time);
-        key_usage[k as usize][left_idx..right_idx].fill(true);
+        if left_idx <= right_idx {
+            key_usage[k as usize][left_idx..right_idx].fill(true);
+        }
     }
 
     key_usage
