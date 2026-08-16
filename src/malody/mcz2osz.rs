@@ -78,7 +78,7 @@ pub fn process_mcz_file_postprocess<F>(path: &Path, mut post_process: F) -> io::
 where
     F: FnMut(&[BeatMapInfo], &Path) -> io::Result<()>,
 {
-    let temp_dir = tempdir::TempDir::new("mcz_to_osz")?;
+    let temp_dir = tempfile::tempdir()?;
     let temp_dir_path = temp_dir.path();
 
     // 使用原有核心处理逻辑，默认计算难度
@@ -95,7 +95,7 @@ where
 /// 输出结果：osz文件路径，内部谱面信息
 pub fn process_mcz_file(path: &Path, b_calc_sr: bool) -> io::Result<(PathBuf, Vec<BeatMapInfo>)> {
     // 创建解压缩后的文件夹
-    let temp_dir = tempdir::TempDir::new("mcz_to_osz")?;
+    let temp_dir = tempfile::tempdir()?;
     let temp_dir_path = temp_dir.path();
 
     // 正经处理过程
