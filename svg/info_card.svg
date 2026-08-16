@@ -34,7 +34,7 @@
                 />
                 
                 <!-- 文字组 -->
-                <g transform="translate(35, 30)" font-size="28" font-weight="500" font-family="Source Han Sans SC" fill="white">
+                <g transform="translate(35, 30)" font-size="28" font-weight="500" font-family="Source Han Sans SC VF" fill="white">
                     <!-- 标题 -->
                     <text class="title" stroke="#000" paint-order="stroke">
                         <tspan font-size="20"  stroke-width="0.5px">{{title_ascii}}</tspan>
@@ -49,34 +49,34 @@
                         <g transform="translate(0, 0)">
                             <text>
                             <tspan font-family="Noto Color Emoji">🎹</tspan>
-                            <tspan stroke-width="1px" stroke="#000" font-family="Source Han Sans">{{column_count}}K</tspan>
+                            <tspan stroke-width="1px" stroke="#000" font-family="Source Han Sans VF">{{column_count}}K</tspan>
                             </text>
                         </g>
                         <g transform="translate(110, 0)">
                             <text font-family="Noto Color Emoji">🎵</text>
                             <g transform="translate(40, 0)">
-                                <text font-family="Source Han Sans" stroke-width="1px" stroke="#000">{{bpm}}</text>
+                                <text font-family="Source Han Sans VF" stroke-width="1px" stroke="#000">{{bpm}}</text>
                             </g>
                         </g>
                         <g transform="translate({{len_pos}}, 0)">
                             <text>
                             <tspan font-family="Noto Color Emoji">⏱️</tspan>
-                            <tspan stroke-width="1px" stroke="#000" font-family="Source Han Sans">{{length}}</tspan>
+                            <tspan stroke-width="1px" stroke="#000" font-family="Source Han Sans VF">{{length}}</tspan>
                             </text>
                         
                             <g transform="translate(180, 0)">
                                 <rect x="-5" y="-30" width="120" height="40" fill="{{sr_gradient}}" rx="20" ry="20"/>
                                 <text stroke-width="0.7px" stroke="#000">
-                                <tspan font-family="Source Han Sans">★ {{sr}}</tspan>
+                                <tspan font-family="Source Han Sans VF">★ {{sr}}</tspan>
                                 </text>
                             </g>
                         </g>
                         <g transform="translate(0, 50)">
                             <text>
                             <tspan font-family="Noto Color Emoji">🍚</tspan>
-                            <tspan stroke-width="1px" stroke="#000" font-family="Source Han Sans">{{note_str}}+</tspan>
+                            <tspan stroke-width="1px" stroke="#000" font-family="Source Han Sans VF">{{note_str}}+</tspan>
                             <tspan font-family="Noto Color Emoji">🍜</tspan>
-                            <tspan stroke-width="1px" stroke="#000" font-family="Source Han Sans">{{ln_str}}</tspan>
+                            <tspan stroke-width="1px" stroke="#000" font-family="Source Han Sans VF">{{ln_str}}</tspan>
                             </text>
                         </g>
                     </g>
