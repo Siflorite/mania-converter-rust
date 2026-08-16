@@ -1,7 +1,7 @@
 use rayon::prelude::*;
 use std::collections::HashSet;
 use std::fs::File;
-use std::io::{self, BufReader, BufWriter, Read, Write};
+use std::io;
 use std::path::{Path, PathBuf};
 use std::str;
 use std::sync::{Arc, Mutex};
@@ -12,7 +12,7 @@ use zip::{CompressionMethod, ZipArchive, ZipWriter};
 use crate::BeatMapInfo;
 use crate::malody::McData;
 use crate::misc::sanitize_filename;
-use crate::osu::{OsuDataLegacy, OsuHitObjectLegacy, OsuMisc, OsuTimingPoint};
+use crate::osu::OsuDataLegacy;
 
 /// Convert all .mcz files under given dir to .osz files.  
 /// "." or "" will set dir to the Run Directory.
@@ -74,19 +74,23 @@ pub fn process_whole_dir_mcz(dir: &str, b_calc_sr: bool, b_print_results: bool) 
 /// 后处理函数参数：内部谱面信息，存放.osu, .mc文件和音乐与背景的临时目录<br>
 /// 输出结果：osz文件路径
 /// 由于函数执行完后临时目录会被清除，请不要将生成的内容存放于临时目录中
-pub fn process_mcz_file_postprocess<F>(path: &Path, mut post_process: F) -> io::Result<PathBuf>
+pub fn process_mcz_file_postprocess<F>(
+    path: &Path,
+    b_calc_sr: bool,
+    mut post_process: F,
+) -> io::Result<PathBuf>
 where
     F: FnMut(&[BeatMapInfo], &Path) -> io::Result<()>,
 {
     let temp_dir = tempfile::tempdir()?;
-    let temp_dir_path = temp_dir.path();
 
     // 使用原有核心处理逻辑，默认计算难度
-    let (osz_path, mut beatmap_infos) = process_mcz_core(path, temp_dir_path, true)?;
-    beatmap_infos.sort_by(|x, y| x.sr.partial_cmp(&y.sr).unwrap());
+    let (osz_path, mut beatmap_infos) = process_mcz_core(path, temp_dir.path(), b_calc_sr)?;
+    if b_calc_sr {
+        beatmap_infos.sort_by(|x, y| x.sr.partial_cmp(&y.sr).unwrap_or(std::cmp::Ordering::Equal));
+    }
     // 执行后处理闭包
-    post_process(&beatmap_infos, temp_dir_path)?;
-
+    post_process(&beatmap_infos, temp_dir.path())?;
     Ok(osz_path)
 }
 
@@ -94,12 +98,12 @@ where
 /// 输入参数：mcz文件路径，是否计算星级<br>
 /// 输出结果：osz文件路径，内部谱面信息
 pub fn process_mcz_file(path: &Path, b_calc_sr: bool) -> io::Result<(PathBuf, Vec<BeatMapInfo>)> {
-    // 创建解压缩后的文件夹
-    let temp_dir = tempfile::tempdir()?;
-    let temp_dir_path = temp_dir.path();
-
-    // 正经处理过程
-    process_mcz_core(path, temp_dir_path, b_calc_sr)
+    let mut beatmap_infos = Vec::new();
+    let osz_path = process_mcz_file_postprocess(path, b_calc_sr, |infos, _| {
+        beatmap_infos = infos.to_vec();
+        Ok(())
+    })?;
+    Ok((osz_path, beatmap_infos))
 }
 
 /// Old mcz pure process with no extra stuff.  
@@ -114,7 +118,7 @@ fn process_mcz_core(
     let required_files: Arc<Mutex<HashSet<PathBuf>>> = Arc::new(Mutex::new(HashSet::new()));
 
     let add_files_to_required = |bg: &Path, audio: &Path| {
-        println!("{:?}, {:?}", bg, audio);
+        // println!("{:?}, {:?}", bg, audio);
         if bg.is_file() {
             let mut required_files = required_files.lock().unwrap();
             required_files.insert(bg.to_path_buf());
@@ -149,7 +153,6 @@ fn process_mcz_core(
 
         // 清理非法字符并生成目标路径
         let sanitized = sanitize_filename(pure_file_name);
-        let _s = &sanitized;
         let target_path = temp_dir_path.join(sanitized);
 
         // 将文件解压到临时目录中
@@ -210,100 +213,40 @@ fn process_mcz_core(
     ))
 }
 
-/// Completely ignore mcz structre, brutal convert.  
-/// Only use it when you can handle the audio and BG related to this .mc file.<br>
-/// As osu won't accept non-ascii filenames, you need to do the sanitizing stuff.
-pub fn process_mc_file(path: &Path) -> io::Result<PathBuf> {
-    let mc_data = analyze_mc_file(path)?;
-    let mut osu_path = PathBuf::from(&path);
-    // 获取文件名部分（带后缀）
-    if let Some(file_stem) = osu_path.file_stem() {
-        // 重新组合路径
-        osu_path.set_file_name(format!("{}.osu", file_stem.to_string_lossy()));
-    }
-    println!("Generating .osu file at: {:?}", osu_path);
-    let osu_file = File::create(osu_path.clone())?;
-    let mut writer = BufWriter::new(osu_file);
-
-    let osu_data = convert_mc_to_osu(&mc_data)?;
-    if let Some(data) = osu_data {
-        serialize_osu_data(&mut writer, &data)?;
-        Ok(osu_path)
-    } else {
-        eprint!("Cannot get .mc data.");
-        Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            "Invalid mc data",
-        ))
-    }
-}
-
 /// The function used in this crate
 fn process_mc_file_self<F>(mc_file_path: &Path, callback: F) -> io::Result<(PathBuf, OsuDataLegacy)>
 where
     F: Fn(&Path, &Path),
 {
     // 解析并转换 .mc 文件为 .osu 文件
-    let mut mc_data = match analyze_mc_file(mc_file_path) {
-        Ok(data) => data,
-        Err(e) => {
-            eprintln!("Error analyzing file {:?}: {}", mc_file_path, e);
-            return Err(e);
-        }
-    };
+    let mc_data = McData::from_file(&mc_file_path.to_string_lossy())?;
+    let mut osu_data = mc_data.to_osu_data()?;
 
     // 对 mc_data 中的图片和音频文件名进行替代，并验证文件存在
+    // 音频不再默认取最后一个，从转换的osu_data里面提取
+    let parent_path = mc_file_path.parent().unwrap_or(Path::new("."));
     let sanitized_background = sanitize_filename(&mc_data.meta.background);
-    let sanitized_audio = sanitize_filename(
-        mc_data
-            .note
-            .last()
-            .and_then(|n| n.sound.as_ref())
-            .unwrap_or(&String::new()),
-    );
-    if let Some(parent_path) = mc_file_path.parent() {
-        let background_path = parent_path.join(&sanitized_background);
-        let audio_path = parent_path.join(&sanitized_audio);
+    let sanitized_audio = sanitize_filename(&osu_data.misc.audio_file_name);
 
-        if !background_path.exists() || !audio_path.exists() {
-            println!("{:?}, {:?}", background_path, audio_path);
-            eprintln!("Warning: Some files specified in the mc file are missing.");
-        }
-
-        callback(&background_path, &audio_path); // Add them to required_files
+    let background_path = parent_path.join(&sanitized_background);
+    let audio_path = parent_path.join(&sanitized_audio);
+    if !background_path.exists() || !audio_path.exists() {
+        println!("{:?}, {:?}", background_path, audio_path);
+        eprintln!("Warning: Some files specified in the mc file are missing.");
     }
+    callback(&background_path, &audio_path); // Add them to required_files
 
-    mc_data.meta.background = sanitized_background;
-    if let Some(note) = mc_data.note.last()
-        && let Some(_sound) = &note.sound
-    {
-        let len = mc_data.note.len();
-        mc_data.note[len - 1].sound = Some(sanitized_audio);
-    }
+    osu_data.misc.background = sanitized_background;
+    osu_data.misc.audio_file_name = sanitized_audio;
+
+    // TODO: 把hitsounds打包进去
+
     // 转换 .mc 文件为 .osu 文件
-    let mut osu_path = PathBuf::from(&mc_file_path);
-    // 获取文件名部分（带后缀）
-    if let Some(file_stem) = osu_path.file_stem() {
-        // 重新组合路径
-        osu_path.set_file_name(format!("{}.osu", file_stem.to_string_lossy()));
-    }
+    let osu_path = mc_file_path.with_extension("osu");
     println!("Generating .osu file at: {:?}", osu_path);
-    let osu_file = File::create(osu_path)?;
-    let mut writer = BufWriter::new(osu_file);
+    osu_data.to_file(&osu_path.to_string_lossy())?;
 
-    let osu_data = match convert_mc_to_osu(&mc_data).unwrap() {
-        Some(data) => data,
-        None => {
-            eprintln!("Cannot get .mc data.");
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "Invalid mc data",
-            ));
-        }
-    };
-    serialize_osu_data(&mut writer, &osu_data)?;
-    let osu_file_path = mc_file_path.with_extension("osu");
-    Ok((osu_file_path, osu_data))
+    Ok((osu_path, osu_data))
 }
 
 fn add_files_to_zip(zip_writer: &mut ZipWriter<File>, files: &HashSet<PathBuf>) -> io::Result<()> {
@@ -323,323 +266,4 @@ fn add_files_to_zip(zip_writer: &mut ZipWriter<File>, files: &HashSet<PathBuf>) 
         io::copy(&mut file, zip_writer)?;
     }
     Ok(())
-}
-
-fn convert_mc_to_osu(mc_data: &McData) -> io::Result<Option<OsuDataLegacy>> {
-    // 打印解析后的数据
-    // println!("{:#?}", mc_data);
-
-    // 检查模式是否为 0（Key 模式）
-    if mc_data.meta.mode != 0 {
-        eprintln!("This program only supports Malody Chart in Key Mode!");
-        return Ok(None);
-    }
-
-    let audio = mc_data
-        .note
-        .last()
-        .and_then(|n| n.sound.as_ref())
-        .unwrap_or(&String::new())
-        .clone();
-
-    let mut osu_data = OsuDataLegacy {
-        misc: OsuMisc {
-            audio_file_name: audio.clone(),
-            preview_time: mc_data.meta.preview.unwrap_or(-1),
-            title: mc_data
-                .meta
-                .song
-                .titleorg
-                .clone()
-                .unwrap_or(mc_data.meta.song.title.clone()),
-            title_unicode: mc_data.meta.song.title.clone(),
-            artist: mc_data
-                .meta
-                .song
-                .artistorg
-                .clone()
-                .unwrap_or(mc_data.meta.song.artist.clone()),
-            artist_unicode: mc_data.meta.song.artist.clone(),
-            creator: mc_data.meta.creator.clone(),
-            version: mc_data.meta.version.clone(),
-            beatmap_id: 0,
-            beatmap_set_id: -1,
-            circle_size: mc_data.meta.mode_ext.column as u32,
-            od: 8.0,
-            background: mc_data.meta.background.clone(),
-        },
-        storyboard_samples: Vec::new(),
-        timings: Vec::new(),
-        notes: Vec::new(),
-    };
-
-    // 构建 TimingPoints 部分
-    let offset_ms = if let Some(note) = mc_data.note.last() {
-        note.offset.unwrap_or(0)
-    } else {
-        0
-    } as f64;
-    if osu_data.misc.preview_time > offset_ms as i32 {
-        osu_data.misc.preview_time -= offset_ms as i32;
-    }
-
-    // 取第一个BPM为基准BPM
-    let bpm_base = mc_data
-        .time
-        .first()
-        .map(|t| t.bpm)
-        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "Missing BPM data"))?;
-    let interval_base = 60000_f64 / bpm_base;
-
-    let mut bpm_list: Vec<(f64, u32, f64)> = Vec::new(); // 分别记录Malody的拍数,对应的osu内毫秒时刻和间隔时间
-
-    for (index, item) in mc_data.time.iter().enumerate() {
-        if index == 0 {
-            let start_beat = (offset_ms / interval_base).ceil();
-            let start_time = (start_beat * interval_base - offset_ms).floor() as u32;
-
-            bpm_list.push((start_beat, start_time, interval_base));
-            continue;
-        }
-        let current_beat = item.beat_to_float();
-        let current_interval = 60000_f64 / item.bpm;
-
-        let (old_beat, old_time, old_interval) = bpm_list[index - 1];
-        let current_time = old_time + ((current_beat - old_beat) * old_interval) as u32;
-        bpm_list.push((current_beat, current_time, current_interval));
-    }
-
-    let beat_to_time = |beat: f64| {
-        // 处理空列表情况
-        if bpm_list.is_empty() {
-            return 0;
-        }
-        // 添加前导检查
-        if beat < bpm_list[0].0 {
-            return (beat * interval_base - offset_ms) as u32;
-        }
-        // 使用更安全的二分查找
-        let idx = bpm_list
-            .partition_point(|probe| probe.0 <= beat)
-            .saturating_sub(1);
-
-        let item = &bpm_list[idx];
-        let interv = (item.2 * 1e12).round() / 1e12;
-        item.1 + ((beat - item.0) * interv).floor() as u32
-    };
-
-    let effect_list: Vec<(f64, u32, f64)> = if let Some(effects) = &mc_data.effect {
-        effects
-            .iter()
-            .map(|effect| {
-                let current_beat = effect.beat_to_float();
-                let current_time = beat_to_time(current_beat);
-                let scroll = effect.scroll;
-                let osu_scroll = if scroll > 0_f64 {
-                    -100_f64 / scroll
-                } else {
-                    -100000000_f64
-                };
-                (current_beat, current_time, osu_scroll)
-            })
-            .collect()
-    } else {
-        Vec::new()
-    };
-
-    // 不会有谱面有一百万个timing吧，不用双指针了，怎么简单怎么来咯
-    // let timings = [bpm_list, effect_list].concat().sort_by_key(|x| x.1);
-    // 合并两个有序列表（假设bpm_list和effect_list已按current_time升序排列）
-    let min_time = bpm_list.first().map(|x| x.1).unwrap_or(0);
-
-    let mut i = 0; // bpm_list指针
-    // 跳过早于bpm起始时间的effect元素
-    let mut j: usize = effect_list.partition_point(|x| x.1 < min_time);
-
-    while i < bpm_list.len() && j < effect_list.len() {
-        let bpm = &bpm_list[i];
-        let eff = &effect_list[j];
-
-        // 比较时间戳并优先写入较小的
-        if bpm.1 <= eff.1 {
-            osu_data.timings.push(OsuTimingPoint {
-                time: bpm.1 as f64,
-                val: bpm.2,
-                is_timing: true,
-            });
-            i += 1;
-        } else {
-            osu_data.timings.push(OsuTimingPoint {
-                time: eff.1 as f64,
-                val: eff.2,
-                is_timing: false,
-            });
-            j += 1;
-        }
-    }
-
-    // 处理剩余元素
-    while i < bpm_list.len() {
-        osu_data.timings.push(OsuTimingPoint {
-            time: bpm_list[i].1 as f64,
-            val: bpm_list[i].2,
-            is_timing: true,
-        });
-        i += 1;
-    }
-
-    while j < effect_list.len() {
-        osu_data.timings.push(OsuTimingPoint {
-            time: effect_list[j].1 as f64,
-            val: effect_list[j].2,
-            is_timing: false,
-        });
-        j += 1;
-    }
-
-    // 构建 HitObjects 部分
-    let total_column = mc_data.meta.mode_ext.column;
-    let column_factor = 512.0 / total_column as f64;
-
-    osu_data.notes = mc_data.note[..mc_data.note.len() - 1]
-        .par_iter()
-        .map(|item| {
-            let item_time = beat_to_time(item.beat_to_float());
-            let column = item.column.unwrap_or(0);
-            let x_pos = ((column as f64 + 0.5) * column_factor).floor() as u32;
-            // 处理 item 的 endbeat
-            if let Some(_end_beat) = &item.endbeat {
-                let item_beat_end = item.end_beat_to_float();
-                let item_end_time = beat_to_time(item_beat_end);
-                OsuHitObjectLegacy {
-                    x_pos,
-                    time: item_time,
-                    end_time: Some(item_end_time),
-                    volume: item.vol.map_or(0u8, |x| x as u8),
-                    hitsound: item.sound.clone(),
-                }
-            } else {
-                OsuHitObjectLegacy {
-                    x_pos,
-                    time: item_time,
-                    end_time: None,
-                    volume: item.vol.map_or(0u8, |x| x as u8),
-                    hitsound: item.sound.clone(),
-                }
-            }
-        })
-        .collect();
-
-    Ok(Some(osu_data))
-}
-
-fn serialize_osu_data(writer: &mut BufWriter<File>, osu_data: &OsuDataLegacy) -> io::Result<()> {
-    // 构建 General 部分
-    write!(writer, "osu file format v14\n\n[General]\n")?;
-    writeln!(writer, "AudioFilename: {}", osu_data.misc.audio_file_name)?;
-    write!(
-        writer,
-        "AudioLeadIn: 0\nPreviewTime: {}\nCountdown: 0\nSampleSet: Soft\n",
-        osu_data.misc.preview_time
-    )?;
-    write!(
-        writer,
-        "StackLeniency: 0.7\nMode: 3\nLetterboxInBreaks: 0\nSpecialStyle: 0\nWidescreenStoryboard: 1\n\n"
-    )?;
-
-    // 构建 Editor 部分
-    write!(
-        writer,
-        "[Editor]\nDistanceSpacing: 1\nBeatDivisor: 8\nGridSize: 4\nTimelineZoom: 2\n\n"
-    )?;
-
-    // 构建 Metadata 部分
-    writeln!(writer, "[Metadata]")?;
-    writeln!(writer, "Title:{}", osu_data.misc.title)?;
-    writeln!(writer, "TitleUnicode:{}", osu_data.misc.title_unicode)?;
-    writeln!(writer, "Artist:{}", osu_data.misc.artist)?;
-    writeln!(writer, "ArtistUnicode:{}", osu_data.misc.artist_unicode)?;
-    writeln!(writer, "Creator:{}", osu_data.misc.creator)?;
-    writeln!(writer, "Version:{}", osu_data.misc.version)?;
-    write!(
-        writer,
-        "Source:\nTags:\nBeatmapID:{}\nBeatmapSetID:{}\n\n",
-        osu_data.misc.beatmap_id, osu_data.misc.beatmap_set_id
-    )?;
-
-    // 构建 Difficulty 部分
-    writeln!(writer, "[Difficulty]")?;
-    let od_str = if osu_data.misc.od.trunc() == osu_data.misc.od {
-        format!("{:.0}", osu_data.misc.od)
-    } else {
-        format!("{:.1}", osu_data.misc.od)
-    };
-    write!(
-        writer,
-        "HPDrainRate:8\nCircleSize:{}\nOverallDifficulty:{}\nApproachRate:5\nSliderMultiplier:1.4\nSliderTickRate:1\n\n",
-        osu_data.misc.circle_size, od_str
-    )?;
-
-    // 构建 Events 部分
-    write!(writer, "[Events]\n//Background and Video events\n")?;
-    if !osu_data.misc.background.is_empty() {
-        writeln!(writer, "0,0,\"{}\",0,0", osu_data.misc.background)?;
-    }
-    write!(
-        writer,
-        "//Break Periods\n//Storyboard Layer 0 (Background)\n"
-    )?;
-    write!(
-        writer,
-        "//Storyboard Layer 1 (Fail)\n//Storyboard Layer 2 (Pass)\n"
-    )?;
-    write!(
-        writer,
-        "//Storyboard Layer 3 (Foreground)\n//Storyboard Layer 4 (Overlay)\n"
-    )?;
-    write!(writer, "//Storyboard Sound Samples\n\n")?;
-
-    // 构建 TimingPoints 部分
-    let timing_points: Vec<_> = osu_data
-        .timings
-        .par_iter()
-        .map(|tp| format!("{},{},4,2,0,10,{},0", tp.time, tp.val, tp.is_timing as u8))
-        .collect();
-
-    // 构建 HitObjects 部分
-    let hit_objects: Vec<_> = osu_data
-        .notes
-        .par_iter()
-        .map(|ho| {
-            if let Some(t) = ho.end_time {
-                format!("{},192,{},128,0,{}:0:0:0:0:", ho.x_pos, ho.time, t)
-            } else {
-                format!("{},192,{},1,0,0:0:0:0:", ho.x_pos, ho.time)
-            }
-        })
-        .collect();
-
-    writeln!(writer, "[TimingPoints]")?;
-    writer.write_all(timing_points.join("\n").as_bytes())?;
-    write!(writer, "\n\n[HitObjects]\n")?;
-    writer.write_all(hit_objects.join("\n").as_bytes())?;
-
-    Ok(())
-}
-
-fn analyze_mc_file(file_path: &Path) -> io::Result<McData> {
-    // 打开文件并使用 BufReader 读取文件内容
-    let file = File::open(file_path)?;
-    let mut reader = BufReader::new(file);
-    let mut content = String::new();
-    reader.read_to_string(&mut content)?;
-    if let Some(index) = content.find('{') {
-        // 删除第一个 `{` 前的所有字符
-        content.drain(..index);
-    }
-
-    // 解析 JSON 数据并转换为 McData 结构体
-    let mc_data: McData = serde_json::from_str(&content)?;
-
-    Ok(mc_data)
 }
