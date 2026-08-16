@@ -46,7 +46,7 @@ pub fn parse_osz_postprocess<F>(osz_path: &Path, mut post_process: F) -> io::Res
 where
     F: FnMut(&[BeatMapInfo], &Path) -> io::Result<()>,
 {
-    let temp_dir = tempdir::TempDir::new("parse_osz")?;
+    let temp_dir = tempfile::tempdir()?;
     let temp_dir_path = temp_dir.path();
 
     let mut osu_info_vec = parse_osz_core(osz_path, temp_dir_path, true)?;
@@ -56,7 +56,7 @@ where
 }
 
 pub fn parse_osz_file(osz_path: &Path, b_calc_sr: bool) -> io::Result<Vec<BeatMapInfo>> {
-    let temp_dir = tempdir::TempDir::new("parse_osz")?;
+    let temp_dir = tempfile::tempdir()?;
     let temp_dir_path = temp_dir.path();
 
     parse_osz_core(osz_path, temp_dir_path, b_calc_sr)

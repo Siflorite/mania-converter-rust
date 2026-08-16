@@ -1,11 +1,10 @@
 use handlebars::Handlebars;
-use lazy_static::lazy_static;
 use resvg::{tiny_skia, usvg};
 use serde_json::json;
 use std::{
     env, fs, io,
     path::{Path, PathBuf},
-    sync::Arc,
+    sync::{Arc, LazyLock},
 };
 
 use crate::BeatMapInfo;
@@ -16,20 +15,19 @@ const NO_IMAGE_PATH: &str = "./svg/no_image.jpg";
 const FONT_DIR_PATH: &str = "./font";
 const CARD_HEIGHT: u32 = 300;
 
-lazy_static! {
-    static ref FONTS: Arc<usvg::fontdb::Database> = {
-        // 使用嵌入的字体资源初始化字体数据库
-        let mut fontdb_origin = usvg::fontdb::Database::new();
-        fontdb_origin.load_fonts_dir(FONT_DIR_PATH);
-        Arc::new(fontdb_origin)
-    };
+static FONTS: LazyLock<Arc<usvg::fontdb::Database>> = LazyLock::new(|| {
+    // 使用嵌入的字体资源初始化字体数据库
+    let mut fontdb_origin = usvg::fontdb::Database::new();
+    fontdb_origin.load_fonts_dir(FONT_DIR_PATH);
+    Arc::new(fontdb_origin)
+});
 
-    static ref HANDLEBARS: handlebars::Handlebars<'static> = {
-        let mut reg = Handlebars::new();
-        reg.register_template_file("template", INFO_TEMPLATE_PATH).expect("Failed to register template");
-        reg
-    };
-}
+static HANDLEBARS: LazyLock<Handlebars> = LazyLock::new(|| {
+    let mut reg = Handlebars::new();
+    reg.register_template_file("template", INFO_TEMPLATE_PATH)
+        .expect("Failed to register template");
+    reg
+});
 
 #[derive(serde::Serialize)]
 struct CardData {
