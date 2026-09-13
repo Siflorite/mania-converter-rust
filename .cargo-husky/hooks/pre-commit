@@ -4,7 +4,7 @@
 #   2) cargo clippy --fix   - auto-fix machine-applicable warnings (working tree only)
 #   3) cargo fmt            - re-format after fixes
 #   4) cargo clippy gate    - remaining warnings abort the commit
-# Any FAIL or newly produced tracked-file fix aborts the commit.
+# Run all four steps, then abort if any failed or produced tracked-file fixes.
 
 GREEN='\033[32m'
 RED='\033[31m'
@@ -25,24 +25,19 @@ working_tree_snapshot() {
 }
 
 run_fixer() {
-    if ! before=$(working_tree_snapshot); then
-        fail "$* (cannot inspect working tree before fixes)"
-        exit 1
-    fi
+    before=$(working_tree_snapshot)
+    snapshot_status=$?
 
-    if "$@"; then
-        if ! after=$(working_tree_snapshot); then
-            fail "$* (cannot inspect working tree after fixes)"
-            exit 1
-        elif [ "$before" != "$after" ]; then
-            fail "$* (files changed; review and stage fixes before retrying)"
-            exit 1
-        else
-            pass "$*"
-        fi
-    else
+    if ! "$@"; then
         fail "$*"
-        exit 1
+    elif [ "$snapshot_status" -ne 0 ]; then
+        fail "$* (cannot inspect working tree before fixes)"
+    elif ! after=$(working_tree_snapshot); then
+        fail "$* (cannot inspect working tree after fixes)"
+    elif [ "$before" != "$after" ]; then
+        fail "$* (files changed; review and stage fixes before retrying)"
+    else
+        pass "$*"
     fi
 }
 
