@@ -69,14 +69,14 @@ cargo doc --workspace --no-deps
 
 A pre-commit hook is installed automatically by `cargo-husky` (a dev-dependency) the first time you run `cargo test` — nothing to install by hand. On every `git commit` it runs and reports each step with `[PASS]` / `[FAIL]`:
 
-1. `cargo fmt --all` — formatting is fixed and staged automatically;
-2. `cargo clippy --workspace --fix` — machine-applicable warnings are fixed and staged automatically;
+1. `cargo fmt --all` — formatting is fixed in the working tree only;
+2. `cargo clippy --workspace --fix` — machine-applicable warnings are fixed in the working tree only;
 3. `cargo fmt --all` — re-format after the fixes;
 4. `cargo clippy --workspace --all-targets --all-features -- -D warnings` — remaining warnings abort the commit.
 
-**Warning** The pre-commit hook will perform `git add -u` after `cargo fmt` and `cargo clippy --fix`, so that users can just do `git commit` if pre-commit check fails an this hook automatically fixed all problems. If you have made changes unrelated to a commit, stash it before every commit so as not to trigger `git add -u` in this hook.
+The hook never stages files or changes the index. Automatic fixes remain in the working tree; review and explicitly stage the intended changes before retrying a commit. If a fixer changes tracked files, the hook aborts the commit even when Cargo succeeds. It compares the working tree before and after each fixer, so unchanged pre-existing edits alone do not cause an abort. Checks run against the working tree, not an isolated copy of the staged snapshot.
 
-When a step fails, the commit is cancelled: fix the issue and run `git add . && git commit` again. In a hurry, `git commit --no-verify` skips the hook — CI still runs the gates above and remains the source of truth.
+When a step fails, the commit is cancelled: fix the issue, review and stage only the intended files, then retry `git commit`. In a hurry, `git commit --no-verify` skips the hook — CI still runs the gates above and remains the source of truth.
 
 The hook scripts live in `.cargo-husky/hooks/`. `cargo test` runs in CI (too slow for every commit). Additional checks (feature matrix, `cargo semver-checks`, `cargo audit`) are enabled as the project grows.
 
@@ -181,14 +181,14 @@ cargo doc --workspace --no-deps
 
 本地钩子由 `cargo-husky`（dev-dependency）自动安装：首次运行 `cargo test` 时即装好，无需手动配置。每次 `git commit` 都会运行并逐项报告 `[PASS]` / `[FAIL]`：
 
-1. `cargo fmt --all` — 自动修复格式并暂存；
-2. `cargo clippy --workspace --fix` — 自动修复机器可修的警告并暂存；
+1. `cargo fmt --all` — 自动修复工作区中的格式，不暂存；
+2. `cargo clippy --workspace --fix` — 自动修复工作区中机器可修的警告，不暂存；
 3. `cargo fmt --all` — 修复后重新格式化；
 4. `cargo clippy --workspace --all-targets --all-features -- -D warnings` — 剩余警告将中止 commit。
 
-**警告** pre-commit钩子在`cargo fmt`和`cargo clippy --fix`后会自动调用`git add -u`更新追踪的文件，如果钩子正好修复了所有的问题，可以直接使用`git commit`指令。如果在开发过程中有与当前commit无关的修改，请务必先stash，以避免触发钩子的`git add -u`而误添加进commit。
+钩子不会暂存文件或修改暂存区。自动修复保留在工作区中；请检查并手动暂存需要提交的改动，再重新提交。若自动修复改变了已跟踪文件，即使 Cargo 成功，钩子也会中止提交。钩子比较每一步修复前后的工作区，因此原本就存在、且未被修复改变的修改不会单独导致提交中止。检查针对工作区运行，并非针对暂存区的隔离副本。
 
-任一步失败 commit 都会被取消：修复后重新 `git add . && git commit` 即可。赶时间可用 `git commit --no-verify` 跳过钩子——CI 仍会执行上面的门禁，CI 才是最终裁判。
+任一步失败 commit 都会被取消：修复后检查并仅暂存需要提交的文件，再重新 `git commit`。赶时间可用 `git commit --no-verify` 跳过钩子——CI 仍会执行上面的门禁，CI 才是最终裁判。
 
 钩子脚本位于 `.cargo-husky/hooks/`。`cargo test` 在 CI 中运行（对每次 commit 来说太慢）。随着项目发展，还会启用更多检查（feature 组合矩阵、`cargo semver-checks`、`cargo audit`）。
 
