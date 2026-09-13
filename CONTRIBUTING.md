@@ -74,7 +74,7 @@ A pre-commit hook is installed automatically by `cargo-husky` (a dev-dependency)
 3. `cargo fmt --all` — re-format after the fixes;
 4. `cargo clippy --workspace --all-targets --all-features -- -D warnings` — remaining warnings abort the commit.
 
-The hook never stages files or changes the index. Automatic fixes remain in the working tree; review and explicitly stage the intended changes before retrying a commit. A successful hook does not include unstaged fixes in the commit.
+The hook never stages files or changes the index. Automatic fixes remain in the working tree; review and explicitly stage the intended changes before retrying a commit. If a fixer changes tracked files, the hook aborts the commit even when Cargo succeeds. It compares the working tree before and after each fixer, so unchanged pre-existing edits alone do not cause an abort. Checks run against the working tree, not an isolated copy of the staged snapshot.
 
 When a step fails, the commit is cancelled: fix the issue, review and stage only the intended files, then retry `git commit`. In a hurry, `git commit --no-verify` skips the hook — CI still runs the gates above and remains the source of truth.
 
@@ -186,7 +186,7 @@ cargo doc --workspace --no-deps
 3. `cargo fmt --all` — 修复后重新格式化；
 4. `cargo clippy --workspace --all-targets --all-features -- -D warnings` — 剩余警告将中止 commit。
 
-钩子不会暂存文件或修改暂存区。自动修复保留在工作区中；请检查并手动暂存需要提交的改动，再重新提交。钩子成功并不意味着未暂存的修复会进入本次提交。
+钩子不会暂存文件或修改暂存区。自动修复保留在工作区中；请检查并手动暂存需要提交的改动，再重新提交。若自动修复改变了已跟踪文件，即使 Cargo 成功，钩子也会中止提交。钩子比较每一步修复前后的工作区，因此原本就存在、且未被修复改变的修改不会单独导致提交中止。检查针对工作区运行，并非针对暂存区的隔离副本。
 
 任一步失败 commit 都会被取消：修复后检查并仅暂存需要提交的文件，再重新 `git commit`。赶时间可用 `git commit --no-verify` 跳过钩子——CI 仍会执行上面的门禁，CI 才是最终裁判。
 
