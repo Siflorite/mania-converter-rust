@@ -26,7 +26,7 @@ cargo test --workspace --all-features
 cargo doc --workspace --no-deps
 ```
 
-Run the CLI with `cargo run -p mania-converter-standalone`, or the web service with `cargo run -p mania-converter-webapp`. The latter starts a listening server; only run it when needed. Run hook regression tests with `python -B -m unittest discover -s tests/hooks -v` (requires Git and POSIX sh; Cargo is mocked). Target individual integration tests with `cargo test --test osu2mc`, `--test old_mc`, `--test sr`, or `--test render`.
+Run the CLI with `cargo run -p mania-converter-standalone`, or the web service with `cargo run -p mania-converter-webapp`. The latter starts a listening server; only run it when needed. Target individual integration tests with `cargo test --test osu2mc`, `--test old_mc`, `--test sr`, or `--test render`.
 
 `.github/workflows/ci.yml` defines the CI gates (fmt, Clippy, tests and docs). CI disables cargo-husky installation via `CARGO_HUSKY_DONT_INSTALL_HOOKS=true`. Local cargo-husky installs `.cargo-husky/hooks/pre-commit`; it runs fmt, Clippy auto-fixes, fmt again and a strict Clippy gate. Fixes stay in the working tree: hooks and automated checks must never stage files or otherwise modify the index. Each fixer compares tracked-file contents before and after execution and aborts the commit if it produces changes, even when Cargo succeeds. Unchanged pre-existing edits alone do not abort the commit. These checks inspect the working tree, not an isolated staged snapshot. Review fixes and explicitly stage only intended files when preparing an authorized commit.
 

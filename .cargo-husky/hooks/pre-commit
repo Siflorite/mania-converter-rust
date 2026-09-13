@@ -27,19 +27,22 @@ working_tree_snapshot() {
 run_fixer() {
     if ! before=$(working_tree_snapshot); then
         fail "$* (cannot inspect working tree before fixes)"
-        return
+        exit 1
     fi
 
     if "$@"; then
         if ! after=$(working_tree_snapshot); then
             fail "$* (cannot inspect working tree after fixes)"
+            exit 1
         elif [ "$before" != "$after" ]; then
             fail "$* (files changed; review and stage fixes before retrying)"
+            exit 1
         else
             pass "$*"
         fi
     else
         fail "$*"
+        exit 1
     fi
 }
 
