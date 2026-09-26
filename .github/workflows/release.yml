@@ -42,15 +42,24 @@ jobs:
         run: |
           $version = (cargo metadata --no-deps --format-version 1 | ConvertFrom-Json).packages |
             Where-Object name -eq 'mania-converter' | Select-Object -ExpandProperty version
+          if (-not $version) { throw 'Cannot read the mania-converter version from Cargo.toml' }
+
           $tag = "v$version"
           "tag=$tag" >> $env:GITHUB_OUTPUT
           "sha=$(git rev-parse HEAD)" >> $env:GITHUB_OUTPUT
-          if (gh release view $tag --repo $env:GITHUB_REPOSITORY 2>$null) {
+
+          # gh exits 1 when the release does not exist, which is the normal
+          # first-release case, so read the exit code instead of trusting output.
+          gh release view $tag --repo $env:GITHUB_REPOSITORY *> $null
+          if ($LASTEXITCODE -eq 0) {
             Write-Host "$tag already has a release, skipping."
             "publish=false" >> $env:GITHUB_OUTPUT
           } else {
             "publish=true" >> $env:GITHUB_OUTPUT
           }
+
+          # The pwsh wrapper exits with $LASTEXITCODE; clear the expected non-zero.
+          exit 0
       - uses: dtolnay/rust-toolchain@stable
         if: steps.meta.outputs.publish == 'true'
         with:
