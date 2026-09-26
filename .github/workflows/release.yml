@@ -1,0 +1,107 @@
+name: release
+
+# Runs after the "ci" workflow has finished on main, so merging the develop
+# branch into main publishes the release automatically.
+on:
+  workflow_run:
+    workflows: [ci]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  CARGO_HUSKY_DONT_INSTALL_HOOKS: "true"
+
+jobs:
+  build:
+    name: Windows x64 executables
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: windows-latest
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+      sha: ${{ steps.meta.outputs.sha }}
+      publish: ${{ steps.meta.outputs.publish }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          persist-credentials: false
+      - name: Read the version from Cargo.toml
+        id: meta
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $version = (cargo metadata --no-deps --format-version 1 | ConvertFrom-Json).packages |
+            Where-Object name -eq 'mania-converter' | Select-Object -ExpandProperty version
+          $tag = "v$version"
+          "tag=$tag" >> $env:GITHUB_OUTPUT
+          "sha=$(git rev-parse HEAD)" >> $env:GITHUB_OUTPUT
+          if (gh release view $tag --repo $env:GITHUB_REPOSITORY 2>$null) {
+            Write-Host "$tag already has a release, skipping."
+            "publish=false" >> $env:GITHUB_OUTPUT
+          } else {
+            "publish=true" >> $env:GITHUB_OUTPUT
+          }
+      - uses: dtolnay/rust-toolchain@stable
+        if: steps.meta.outputs.publish == 'true'
+        with:
+          targets: x86_64-pc-windows-msvc
+      - uses: Swatinem/rust-cache@v2
+        if: steps.meta.outputs.publish == 'true'
+      - name: Build the CLI and the Webapp
+        if: steps.meta.outputs.publish == 'true'
+        run: cargo build --locked --release --target x86_64-pc-windows-msvc -p mania-converter-standalone -p mania-converter-webapp
+      - name: Name the executables like the earlier releases
+        if: steps.meta.outputs.publish == 'true'
+        shell: pwsh
+        env:
+          TAG: ${{ steps.meta.outputs.tag }}
+        run: |
+          New-Item -ItemType Directory -Path dist -Force | Out-Null
+          foreach ($name in 'mania-converter-standalone', 'mania-converter-webapp') {
+            Copy-Item "target/x86_64-pc-windows-msvc/release/$name.exe" "dist/$name-$env:TAG.exe"
+          }
+      - uses: actions/upload-artifact@v4
+        if: steps.meta.outputs.publish == 'true'
+        with:
+          name: windows-x64
+          path: dist/*.exe
+          if-no-files-found: error
+
+  publish:
+    name: Changelog and GitHub Release
+    needs: build
+    if: needs.build.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.build.outputs.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Generate the changelog since the previous tag
+        uses: orhun/git-cliff-action@v4
+        with:
+          version: v2.14.2
+          config: cliff.toml
+          args: --unreleased --tag ${{ needs.build.outputs.tag }} --output CHANGELOG.md
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-x64
+          path: dist
+      - name: Publish the release with the changelog as its notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.build.outputs.tag }}
+          SHA: ${{ needs.build.outputs.sha }}
+        run: |
+          gh release create "$TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$SHA" \
+            --title "$TAG" \
+            --notes-file CHANGELOG.md \
+            dist/*.exe
