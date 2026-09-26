@@ -1,18 +1,16 @@
 use rayon::prelude::*;
 use std::collections::HashSet;
-use std::fs::File;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::str;
 use std::sync::{Arc, Mutex};
 use walkdir::WalkDir;
-use zip::write::SimpleFileOptions;
-use zip::{CompressionMethod, ZipArchive, ZipWriter};
 
 use crate::BeatMapInfo;
 use crate::malody::McData;
 use crate::misc::sanitize_filename;
 use crate::osu::OsuDataLegacy;
+use crate::zip_utils::{create_archive, extract_archive};
 
 /// Convert all .mcz files under given dir to .osz files.  
 /// "." or "" will set dir to the Run Directory.
@@ -114,53 +112,16 @@ fn process_mcz_core(
     b_calc_sr: bool,
 ) -> io::Result<(PathBuf, Vec<BeatMapInfo>)> {
     let beatmap_data_vec: Arc<Mutex<Vec<BeatMapInfo>>> = Arc::new(Mutex::new(Vec::new()));
-    // 在process_mcz_file中添加资源收集
-    let required_files: Arc<Mutex<HashSet<PathBuf>>> = Arc::new(Mutex::new(HashSet::new()));
 
-    let add_files_to_required = |bg: &Path, audio: &Path| {
-        // println!("{:?}, {:?}", bg, audio);
-        if bg.is_file() {
-            let mut required_files = required_files.lock().unwrap();
-            required_files.insert(bg.to_path_buf());
-        }
-        if audio.is_file() {
-            let mut required_files = required_files.lock().unwrap();
-            required_files.insert(audio.to_path_buf());
+    // Collect assets required by all .mc files
+    let required_files: Arc<Mutex<HashSet<PathBuf>>> = Arc::new(Mutex::new(HashSet::new()));
+    let add_files_to_required = |path: &Path| {
+        if path.is_file() {
+            required_files.lock().unwrap().insert(path.to_path_buf());
         }
     };
 
-    // 打开 .mcz 文件作为 ZIP 压缩文件
-    let file = File::open(mcz_path)?;
-    let mut zip_archive = ZipArchive::new(file)?;
-
-    // 遍历 ZIP 压缩文件中的所有文件
-    for i in 0..zip_archive.len() {
-        let mut file = zip_archive.by_index(i)?;
-
-        // 纯文件名，不含路径
-        let file_name_bytes = file.name_raw();
-        let translated_file_name = match str::from_utf8(file_name_bytes) {
-            Ok(file_name) => file_name.to_string(),
-            Err(e) => {
-                eprintln!("Failed to decode file name as UTF-8: {}", e);
-                "invalid_utf8_name".to_string()
-            }
-        };
-        let pure_file_name = Path::new(&translated_file_name)
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap();
-
-        // 清理非法字符并生成目标路径
-        let sanitized = sanitize_filename(pure_file_name);
-        let target_path = temp_dir_path.join(sanitized);
-
-        // 将文件解压到临时目录中
-        if file.is_file() {
-            let mut output = File::create(&target_path)?;
-            io::copy(&mut file, &mut output)?;
-        }
-    }
+    extract_archive(mcz_path, temp_dir_path)?;
 
     // 在临时文件夹中找到 .mc 文件并转换为 .osu 文件
     WalkDir::new(temp_dir_path)
@@ -186,10 +147,8 @@ fn process_mcz_core(
 
                 let beatmap_data = osu_data.get_beatmap_info(b_calc_sr);
                 {
-                    let mut beatmap_data_vec = beatmap_data_vec.lock().unwrap();
-                    beatmap_data_vec.push(beatmap_data);
-                    let mut required_files = required_files.lock().unwrap();
-                    required_files.insert(osu_file_path);
+                    beatmap_data_vec.lock().unwrap().push(beatmap_data);
+                    required_files.lock().unwrap().insert(osu_file_path);
                 }
             }
         });
@@ -197,12 +156,7 @@ fn process_mcz_core(
     // 创建新的 .osz ZIP 文件
     let osz_file_path = mcz_path.with_extension("osz");
     println!("Generating .osz at: {:?}", osz_file_path);
-    let osz_file = File::create(osz_file_path.clone())?;
-    let mut zip_writer = ZipWriter::new(osz_file);
-    // 将临时文件夹中的文件添加到 .osz 文件中
-    add_files_to_zip(&mut zip_writer, &required_files.lock().unwrap())?;
-    // 完成写入
-    zip_writer.finish()?;
+    create_archive(&osz_file_path, &required_files.lock().unwrap())?;
 
     Ok((
         osz_file_path,
@@ -213,33 +167,76 @@ fn process_mcz_core(
     ))
 }
 
-/// The function used in this crate
+/// Process a single .mc file, convert it into osu! format,
+/// and return the .osu file path and data.  
+///
+/// The function uses callback to post all required assets in .mc file,
+/// so that the caller can collect them and add them to the .osz file.
 fn process_mc_file_self<F>(mc_file_path: &Path, callback: F) -> io::Result<(PathBuf, OsuDataLegacy)>
 where
-    F: Fn(&Path, &Path),
+    F: Fn(&Path),
 {
     // 解析并转换 .mc 文件为 .osu 文件
     let mc_data = McData::from_file(&mc_file_path.to_string_lossy())?;
     let mut osu_data = mc_data.to_osu_data()?;
 
-    // 对 mc_data 中的图片和音频文件名进行替代，并验证文件存在
-    // 音频不再默认取最后一个，从转换的osu_data里面提取
+    // sanitize filenames
     let parent_path = mc_file_path.parent().unwrap_or(Path::new("."));
-    let sanitized_background = sanitize_filename(&mc_data.meta.background);
-    let sanitized_audio = sanitize_filename(&osu_data.misc.audio_file_name);
+    let sanitize_reference = |name: &str| {
+        let file_name = Path::new(name)
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or(name);
+        sanitize_filename(file_name)
+    };
 
-    let background_path = parent_path.join(&sanitized_background);
-    let audio_path = parent_path.join(&sanitized_audio);
-    if !background_path.exists() || !audio_path.exists() {
+    let background = sanitize_reference(&mc_data.meta.background);
+    let audio = sanitize_reference(&osu_data.misc.audio_file_name);
+
+    let background_path = parent_path.join(&background);
+    let audio_path = parent_path.join(&audio);
+    if !background_path.is_file() || !audio_path.is_file() {
         println!("{:?}, {:?}", background_path, audio_path);
         eprintln!("Warning: Some files specified in the mc file are missing.");
     }
-    callback(&background_path, &audio_path); // Add them to required_files
+    // Add them to required_files
+    callback(&background_path);
+    callback(&audio_path);
 
-    osu_data.misc.background = sanitized_background;
-    osu_data.misc.audio_file_name = sanitized_audio;
+    osu_data.misc.background = background;
+    osu_data.misc.audio_file_name = audio;
 
-    // TODO: 把hitsounds打包进去
+    // 把hitsounds打包进去
+    let add_hitsound = |name: &mut String| {
+        if name.is_empty() {
+            return;
+        }
+
+        let sanitized = sanitize_reference(name);
+        let path = parent_path.join(&sanitized);
+
+        if !path.is_file() {
+            eprintln!(
+                "Warning: Hitsound file {} missing in {}.",
+                path.display(),
+                mc_file_path.display()
+            );
+        }
+
+        callback(&path);
+        *name = sanitized;
+    };
+
+    osu_data
+        .storyboard_samples
+        .iter_mut()
+        .for_each(|s| add_hitsound(&mut s.hitsound));
+
+    osu_data
+        .notes
+        .iter_mut()
+        .filter_map(|n| n.hitsound.as_mut())
+        .for_each(add_hitsound);
 
     // 转换 .mc 文件为 .osu 文件
     let osu_path = mc_file_path.with_extension("osu");
@@ -247,23 +244,4 @@ where
     osu_data.to_file(&osu_path.to_string_lossy())?;
 
     Ok((osu_path, osu_data))
-}
-
-fn add_files_to_zip(zip_writer: &mut ZipWriter<File>, files: &HashSet<PathBuf>) -> io::Result<()> {
-    let sorted_files: Vec<_> = files.iter().collect();
-
-    for path in sorted_files {
-        let file_name = path
-            .file_name()
-            .and_then(|n| n.to_str())
-            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "Invalid file name"))?;
-
-        let mut file = File::open(path)?;
-        zip_writer.start_file(
-            file_name,
-            SimpleFileOptions::default().compression_method(CompressionMethod::Stored),
-        )?;
-        io::copy(&mut file, zip_writer)?;
-    }
-    Ok(())
 }
