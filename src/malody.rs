@@ -3,7 +3,7 @@ mod mcz2osz;
 use std::ops::Add;
 use std::{
     fs::File,
-    io::{self, BufReader, Read},
+    io::{self, BufReader, BufWriter, Read},
     ops::AddAssign,
 };
 
@@ -238,6 +238,13 @@ impl McData {
         Ok(mc_data)
     }
 
+    pub fn to_file(&self, file_path: &str) -> io::Result<()> {
+        let file = File::create(file_path)?;
+        let writer = BufWriter::new(file);
+        serde_json::to_writer(writer, &self)?;
+        Ok(())
+    }
+
     pub fn to_osu_data(&self) -> io::Result<OsuDataLegacy> {
         // 打印解析后的数据
         // println!("{:#?}", mc_data);
@@ -267,10 +274,11 @@ impl McData {
                 .partial_cmp(&b.beat_to_float())
                 .unwrap_or(std::cmp::Ordering::Equal)
         });
-        let audio_note = audio_notes.iter().find(|note| note.beat_to_float() == 0.0);
-        let sound_effects = audio_notes
+        let audio_note = audio_notes
             .iter()
-            .filter(|note| note.beat_to_float() != 0.0);
+            .position(|note| note.beat_to_float() == 0.0)
+            .map(|idx| audio_notes.remove(idx));
+        let sound_effects = audio_notes.into_iter();
         let audio = audio_note
             .and_then(|n| n.sound.clone())
             .unwrap_or(String::new());

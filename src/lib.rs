@@ -1,8 +1,9 @@
 #![doc = include_str!("../README.md")]
 pub mod graphx;
 pub mod malody;
-pub mod misc;
+mod misc;
 pub mod osu;
+mod zip_utils;
 
 use std::fmt;
 // Some miscellaneous stuff:

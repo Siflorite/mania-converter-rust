@@ -7,6 +7,7 @@ pub mod osz_func;
 
 pub use calc_sr::{calculate_from_data, calculate_from_file};
 pub use osz_func::{parse_osz_file, parse_osz_postprocess, parse_whole_dir_osz};
+pub use osz2mcz::*;
 use std::fmt;
 use std::fs::File;
 use std::io::{self, BufRead, BufReader, BufWriter, Write};
