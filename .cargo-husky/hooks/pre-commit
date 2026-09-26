@@ -1,0 +1,71 @@
+#!/bin/sh
+# pre-commit hook:
+#   1) cargo fmt            - auto-format (working tree only)
+#   2) cargo clippy --fix   - auto-fix machine-applicable warnings (working tree only)
+#   3) cargo fmt            - re-format after fixes
+#   4) cargo clippy gate    - remaining warnings abort the commit
+# Run all four steps, then abort if any failed or produced tracked-file fixes.
+
+GREEN='\033[32m'
+RED='\033[31m'
+BOLD='\033[1m'
+NC='\033[0m'
+passed=0
+failed=0
+
+say()  { printf '%b\n' "$1"; }
+pass() { say "    ${GREEN}[PASS]${NC} $1"; passed=$((passed+1)); }
+fail() { say "    ${RED}[FAIL]${NC} $1"; failed=$((failed+1)); }
+
+# Compare complete tracked-file diffs, not just dirty/clean status: unrelated
+# pre-existing edits must not abort a commit if the fixer leaves them unchanged.
+# Disable external diff/textconv so snapshots reflect the actual file contents.
+working_tree_snapshot() {
+    git diff --no-ext-diff --no-textconv --binary --no-renames --ignore-submodules=all --
+}
+
+run_fixer() {
+    before=$(working_tree_snapshot)
+    snapshot_status=$?
+
+    if ! "$@"; then
+        fail "$*"
+    elif [ "$snapshot_status" -ne 0 ]; then
+        fail "$* (cannot inspect working tree before fixes)"
+    elif ! after=$(working_tree_snapshot); then
+        fail "$* (cannot inspect working tree after fixes)"
+    elif [ "$before" != "$after" ]; then
+        fail "$* (files changed; review and stage fixes before retrying)"
+    else
+        pass "$*"
+    fi
+}
+
+say ""
+say "${BOLD}== pre-commit checks ==${NC}"
+
+say "  [1/4] cargo fmt --all"
+run_fixer cargo fmt --all
+
+say "  [2/4] cargo clippy --fix"
+run_fixer cargo clippy --fix --workspace --allow-dirty --allow-staged --all-targets --all-features
+
+say "  [3/4] cargo fmt --all"
+run_fixer cargo fmt --all
+
+say "  [4/4] cargo clippy --workspace --all-targets --all-features -- -D warnings"
+if cargo clippy --workspace --all-targets --all-features -- -D warnings; then
+    pass "cargo clippy"
+else
+    fail "cargo clippy"
+fi
+
+say ""
+say "  Result: ${GREEN}${passed} passed${NC}, ${RED}${failed} failed${NC}"
+if [ "$failed" -eq 0 ]; then
+    say "  ${GREEN}All checks passed - creating commit.${NC}"
+    exit 0
+else
+    say "  ${RED}Commit aborted. Fix the failing checks, review and stage intended changes, then retry git commit${NC}"
+    exit 1
+fi

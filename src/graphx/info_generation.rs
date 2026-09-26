@@ -1,35 +1,33 @@
 use handlebars::Handlebars;
-use lazy_static::lazy_static;
 use resvg::{tiny_skia, usvg};
 use serde_json::json;
 use std::{
     env, fs, io,
     path::{Path, PathBuf},
-    sync::Arc,
+    sync::{Arc, LazyLock},
 };
 
-use crate::misc::sanitize_filename;
 use crate::BeatMapInfo;
+use crate::misc::sanitize_filename;
 
 const INFO_TEMPLATE_PATH: &str = "./svg/info_card.svg";
 const NO_IMAGE_PATH: &str = "./svg/no_image.jpg";
 const FONT_DIR_PATH: &str = "./font";
 const CARD_HEIGHT: u32 = 300;
 
-lazy_static! {
-    static ref FONTS: Arc<usvg::fontdb::Database> = {
-        // 使用嵌入的字体资源初始化字体数据库
-        let mut fontdb_origin = usvg::fontdb::Database::new();
-        fontdb_origin.load_fonts_dir(FONT_DIR_PATH);
-        Arc::new(fontdb_origin)
-    };
+static FONTS: LazyLock<Arc<usvg::fontdb::Database>> = LazyLock::new(|| {
+    // 使用嵌入的字体资源初始化字体数据库
+    let mut fontdb_origin = usvg::fontdb::Database::new();
+    fontdb_origin.load_fonts_dir(FONT_DIR_PATH);
+    Arc::new(fontdb_origin)
+});
 
-    static ref HANDLEBARS: handlebars::Handlebars<'static> = {
-        let mut reg = Handlebars::new();
-        reg.register_template_file("template", INFO_TEMPLATE_PATH).expect("Failed to register template");
-        reg
-    };
-}
+static HANDLEBARS: LazyLock<Handlebars> = LazyLock::new(|| {
+    let mut reg = Handlebars::new();
+    reg.register_template_file("template", INFO_TEMPLATE_PATH)
+        .expect("Failed to register template");
+    reg
+});
 
 #[derive(serde::Serialize)]
 struct CardData {
@@ -60,10 +58,7 @@ pub fn generate_info_abstract(
         .iter()
         .enumerate()
         .map(|(i, info)| {
-            let bg_name = match &info.bg_name {
-                Some(s) => s.as_str(),
-                None => "",
-            };
+            let bg_name = &info.bg_name;
             let bg_path = temp_dir_path.join(Path::new(bg_name));
             let default_path = env::current_dir().unwrap().join(Path::new(NO_IMAGE_PATH));
             let final_path = if bg_path.exists() {
@@ -116,8 +111,8 @@ pub fn generate_info_abstract(
                 length: length_str,
                 sr_gradient: format_sr_gradient(sr),
                 sr: format!("{:.02}", sr),
-                note_str: note_str,
-                ln_str: ln_str,
+                note_str,
+                ln_str,
                 len_pos: 190 + delta_len,
                 y_offset: i as u32 * CARD_HEIGHT,
             }
@@ -147,7 +142,7 @@ pub fn generate_info_abstract(
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
 
     let mut pixmap = tiny_skia::Pixmap::new(1200, total_height)
-        .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "Failed to create pixmap"))?;
+        .ok_or_else(|| io::Error::other("Failed to create pixmap"))?;
 
     resvg::render(&tree, tiny_skia::Transform::default(), &mut pixmap.as_mut());
 
@@ -161,9 +156,7 @@ pub fn generate_info_abstract(
     let pic_name = format!("{}.png", santized_name);
     let pic_path = save_pic_path.join(pic_name);
 
-    pixmap
-        .save_png(&pic_path)
-        .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+    pixmap.save_png(&pic_path).map_err(io::Error::other)?;
 
     Ok(pic_path)
 }
@@ -179,7 +172,7 @@ fn format_bpm_str(min_bpm: f64, max_bpm: Option<f64>) -> String {
         .to_string();
 
     if (m_bpm * 10.0).round() as i32 == (min_bpm * 10.0).round() as i32 {
-        format!("{}", min_bpm_str)
+        min_bpm_str.to_string()
     } else {
         let max_bpm_str = format!("{:.1}", m_bpm)
             .trim_matches('0')

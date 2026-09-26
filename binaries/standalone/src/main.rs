@@ -1,5 +1,5 @@
-use mania_converter::malody_func::process_whole_dir_mcz;
-use mania_converter::osu_func::parse_whole_dir_osz;
+use mania_converter::malody::process_whole_dir_mcz;
+use mania_converter::osu::parse_whole_dir_osz;
 use std::io::{self, Write};
 
 fn main() -> io::Result<()> {
