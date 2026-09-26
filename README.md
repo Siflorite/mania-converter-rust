@@ -67,8 +67,30 @@ pub fn process(file_path: &str) -> io::Result<(PathBuf, Vec<BeatMapInfo>)> {
 ```
 
 ## Roadmap
-~~SR Calculation.~~ Added in v0.4.0
-.osu/.osz to .mc/.mcz
+
+### Finished
+
+v0.4.0
+- SR Calculation
+
+v0.6.0
+- .osu/.osz to .mc/.mcz
+- hitsound related stuff
+- CI/CD, contribution routine
+
+### Future
+
+v0.6.x
+- refactor tests and CI
+- supplement for annotations
+
+v0.7.0
+- features
+- publish to crates.io
+
+binary
+- ratatui support
+
+TODOs:
 Some other converting stuff?
-Implement malody to osu in v0.6.0.
-cargo clippy, features control SR part, publish to crates.io.
+New sr calculation / refactor

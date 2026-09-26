@@ -95,14 +95,15 @@ The hook scripts live in `.cargo-husky/hooks/`. `cargo test` runs in CI (too slo
 
 ## 7. Release process (automated)
 
-1. When `develop/v_X_Y` is feature-complete, open the release PR: `develop/v_X_Y` → `main`.
-2. After the checks pass and the PR is merged, the bot:
-   - tags the merge commit `vX.Y.Z` (version taken from `Cargo.toml`);
-   - builds binaries for Windows / macOS / Linux;
-   - generates the changelog (AI-assisted release notes);
-   - creates the GitHub Release;
-   - publishes the crate to crates.io.
-3. The merged version branch is archived; development of the next version starts from `main`.
+1. Set the root `Cargo.toml` package version to the next stable `X.Y.Z`, then open the release PR: `develop/v_X_Y` → `main`.
+2. Once `ci` succeeds on `main`, [`.github/workflows/release.yml`](.github/workflows/release.yml) generates the changelog with `git-cliff` (`cliff.toml`) and publishes the GitHub Release `vX.Y.Z`, using that changelog as the release notes.
+3. The release also carries Windows x64 builds of the CLI and the Webapp, named like the earlier releases:
+   - `mania-converter-standalone-vX.Y.Z.exe`
+   - `mania-converter-webapp-vX.Y.Z.exe`
+4. A version that already has a Release is skipped; bump the version to publish again.
+5. The merged version branch is archived; development of the next version starts from `main`.
+
+The repository must allow Actions to write contents (Settings → Actions → General → Workflow permissions).
 
 ## 8. Questions?
 
@@ -207,14 +208,15 @@ cargo doc --workspace --no-deps
 
 ## 7. 发布流程（全自动）
 
-1. `develop/v_X_Y` 功能齐备后，开发布 PR：`develop/v_X_Y` → `main`。
-2. 检查全部通过且 PR 合并后，机器人自动：
-   - 在合并提交上打 tag `vX.Y.Z`（版本号取自 `Cargo.toml`）；
-   - 构建 Windows / macOS / Linux 三平台二进制；
-   - 生成 changelog（AI 辅助撰写发布说明）；
-   - 创建 GitHub Release；
-   - 发布 crate 到 crates.io。
-3. 已合并的版本分支归档；下一版本的开发从 `main` 重新开始。
+1. 将根目录 `Cargo.toml` 的 package 版本改为下一稳定版 `X.Y.Z`，然后开发布 PR：`develop/v_X_Y` → `main`。
+2. `ci` 在 `main` 上通过后，[`.github/workflows/release.yml`](.github/workflows/release.yml) 用 `git-cliff`（`cliff.toml`）生成 changelog，并发布 GitHub Release `vX.Y.Z`，changelog 即发布说明。
+3. 发布同时附带 Windows x64 的 CLI 与 Webapp 构建，命名沿用之前的发布：
+   - `mania-converter-standalone-vX.Y.Z.exe`
+   - `mania-converter-webapp-vX.Y.Z.exe`
+4. 该版本的 Release 已存在时自动跳过；需要再次发布就先递增版本号。
+5. 已合并的版本分支归档；下一版本的开发从 `main` 重新开始。
+
+仓库需允许 Actions 写入 contents（Settings → Actions → General → Workflow permissions）。
 
 ## 8. 有问题？
 
