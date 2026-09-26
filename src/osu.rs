@@ -145,7 +145,10 @@ impl OsuTimingPoint {
     /// We only need `time`, `beatLength` and `uninherited`.
     pub fn parse(line: &str) -> Option<Self> {
         let parts: Vec<&str> = line.split(',').collect();
-        if parts.len() < 8 {
+        // Very ancient osu! files only contain time and beatLength
+        // But I've checked that [the first ever mania map](https://osu.ppy.sh/beatmapsets/63089#mania/193129)
+        // already has 8 segments. So this is just defensive programming.
+        if parts.len() < 2 {
             return None;
         }
 
@@ -904,22 +907,30 @@ impl OsuDataLegacy {
             mode_ext,
         };
 
-        let timings = original_timings
-            .iter()
-            .map(|t| {
-                // 把第一个时间点的timing和effect拉到新的offset上
-                // epsilon参考Malody转osu，用1e-12
-                OsuTimingPoint {
-                    time: if (t.time - original_offset).abs() < 1e-12 {
-                        t.time - offset.floor()
-                    } else {
-                        t.time
-                    },
-                    val: t.val,
-                    is_timing: t.is_timing,
-                }
-            })
-            .collect::<Vec<_>>();
+        let timings = if original_timings.is_empty() {
+            vec![OsuTimingPoint {
+                time: 0.0,
+                val: original_interval,
+                is_timing: true,
+            }]
+        } else {
+            original_timings
+                .iter()
+                .map(|t| {
+                    // 把第一个时间点的timing和effect拉到新的offset上
+                    // epsilon参考Malody转osu，用1e-12
+                    OsuTimingPoint {
+                        time: if (t.time - original_offset).abs() < 1e-12 {
+                            t.time - offset.floor()
+                        } else {
+                            t.time
+                        },
+                        val: t.val,
+                        is_timing: t.is_timing,
+                    }
+                })
+                .collect::<Vec<_>>()
+        };
 
         let beat_counts = timings
             .windows(2)
