@@ -9,7 +9,7 @@ use walkdir::WalkDir;
 use crate::BeatMapInfo;
 use crate::malody::McData;
 use crate::misc::sanitize_filename;
-use crate::osu::OsuDataLegacy;
+use crate::osu::{OsuDataLegacy, OsuDataV128};
 use crate::zip_utils::{create_archive, extract_archive};
 
 /// Convert all .mcz files under given dir to .osz files.  
@@ -123,35 +123,88 @@ fn process_mcz_core(
 
     extract_archive(mcz_path, temp_dir_path)?;
 
-    // 在临时文件夹中找到 .mc 文件并转换为 .osu 文件
-    WalkDir::new(temp_dir_path)
+    let entries = WalkDir::new(temp_dir_path)
         .into_iter()
-        .par_bridge()
-        .for_each(|entry| {
-            let entry = entry.unwrap();
-            let entry_path = entry.path();
+        .filter_map(Result::ok)
+        .collect::<Vec<_>>();
 
-            if entry_path.extension() == Some(std::ffi::OsStr::new("mc")) {
-                let (osu_file_path, osu_data) =
-                    match process_mc_file_self(entry_path, add_files_to_required) {
-                        Ok(data) => data,
-                        Err(e) => {
-                            eprintln!(
-                                "Failed to convert .mc file {}: {}.",
-                                entry_path.to_string_lossy(),
-                                e
-                            );
-                            return;
-                        }
-                    };
+    entries.par_iter().for_each(|entry| {
+        let entry_path = entry.path();
+        if !entry_path.is_file() {
+            return; // Return this closure
+        }
+
+        if entry_path.extension() == Some(std::ffi::OsStr::new("mc")) {
+            let (osu_file_path, osu_data) =
+                match process_mc_file_self(entry_path, add_files_to_required) {
+                    Ok(data) => data,
+                    Err(e) => {
+                        eprintln!(
+                            "Failed to convert .mc file {}: {}.",
+                            entry_path.to_string_lossy(),
+                            e
+                        );
+                        return;
+                    }
+                };
+
+            let beatmap_data = osu_data.get_beatmap_info(b_calc_sr);
+            {
+                beatmap_data_vec.lock().unwrap().push(beatmap_data);
+                required_files.lock().unwrap().insert(osu_file_path);
+            }
+        } else if entry_path.extension() == Some(std::ffi::OsStr::new("osu")) {
+            // If a player imports a mcz pack into Malody, and exports it from Malody,
+            // Malody will pack up with extension name ".mcz"
+            // So we need to handle osu files in mczs as well.
+            if let Ok(osu_data) = OsuDataV128::from_file(&entry_path.to_string_lossy()) {
+                let mut osu_data = osu_data.to_legacy();
+                // Pack up assets
+                let parent = entry_path.parent().unwrap_or(Path::new("."));
+                let add_asset = |name: &mut String| {
+                    if name.is_empty() {
+                        return;
+                    }
+
+                    let file_name = Path::new(name.as_str())
+                        .file_name()
+                        .and_then(|name| name.to_str())
+                        .unwrap_or(name.as_str());
+                    let sanitized_name = sanitize_filename(file_name);
+                    add_files_to_required(&parent.join(&sanitized_name));
+                    *name = sanitized_name;
+                };
+
+                add_asset(&mut osu_data.misc.audio_file_name);
+                add_asset(&mut osu_data.misc.background);
+
+                for sample in &mut osu_data.storyboard_samples {
+                    add_asset(&mut sample.hitsound);
+                }
+
+                for hitsound in osu_data
+                    .notes
+                    .iter_mut()
+                    .filter_map(|n| n.hitsound.as_mut())
+                {
+                    add_asset(hitsound);
+                }
+
+                // 写回临时目录中的 osu，保存修改后的资源引用。
+                if let Err(e) = osu_data.to_file(&entry_path.to_string_lossy()) {
+                    eprintln!("Failed to write {}: {e}", entry_path.display());
+                    return;
+                }
+
+                add_files_to_required(entry_path);
 
                 let beatmap_data = osu_data.get_beatmap_info(b_calc_sr);
-                {
-                    beatmap_data_vec.lock().unwrap().push(beatmap_data);
-                    required_files.lock().unwrap().insert(osu_file_path);
-                }
+                beatmap_data_vec.lock().unwrap().push(beatmap_data);
+            } else {
+                eprintln!("Failed to read .osu file {}", entry_path.to_string_lossy());
             }
-        });
+        }
+    });
 
     // 创建新的 .osz ZIP 文件
     let osz_file_path = mcz_path.with_extension("osz");
