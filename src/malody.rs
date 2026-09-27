@@ -404,15 +404,39 @@ impl McData {
         };
 
         let mut timings = [bpm_list.clone(), effect_list].concat();
+        // Stable sorting keeps red lines before effects at the same timestamp,
+        // and preserves authored order when multiple effects share a timestamp.
         timings.sort_by_key(|x| x.1);
-        osu_data.timings = timings
-            .iter()
-            .map(|&(_, time, scroll)| OsuTimingPoint {
-                time: time as f64,
-                val: scroll,
-                is_timing: scroll > 0.0,
-            })
-            .collect();
+        let mut active_scroll = None;
+        for group in timings.chunk_by(|a, b| a.1 == b.1) {
+            let mut has_red = false;
+            let mut has_green = false;
+            for &(_, time, value) in group {
+                let is_timing = value > 0.0;
+                has_red |= is_timing;
+                if !is_timing {
+                    has_green = true;
+                    active_scroll = Some(value);
+                }
+                osu_data.timings.push(OsuTimingPoint {
+                    time: time as f64,
+                    val: value,
+                    is_timing,
+                });
+            }
+            // osu! red lines reset SV, while Malody scroll effects persist.
+            // An explicit effect at this time already supplies the desired SV.
+            if has_red
+                && !has_green
+                && let Some(value) = active_scroll
+            {
+                osu_data.timings.push(OsuTimingPoint {
+                    time: group[0].1 as f64,
+                    val: value,
+                    is_timing: false,
+                });
+            }
+        }
 
         // 构建 HitObjects 部分
         let total_column = self.meta.mode_ext.column;
