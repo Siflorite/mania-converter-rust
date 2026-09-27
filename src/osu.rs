@@ -519,7 +519,13 @@ where
         storyboard_samples.sort_unstable_by(|a, b| a.time.total_cmp(&b.time));
 
         let mut timings = self.timings;
-        timings.sort_unstable_by(|a, b| a.time.total_cmp(&b.time));
+        // 稳定排序：时间相同则红线在前、绿线在后；
+        // 同时间的多条绿线保留原顺序，最后一条生效。
+        timings.sort_by(|a, b| {
+            a.time
+                .total_cmp(&b.time)
+                .then_with(|| b.is_timing.cmp(&a.is_timing))
+        });
 
         let mut notes = self.notes;
         notes.sort_unstable_by(|a, b| a.get_time().into().total_cmp(&b.get_time().into()));
@@ -969,17 +975,27 @@ impl OsuDataLegacy {
             beats + Beat::from_float((time - timing.time) / timing.val)
         };
 
-        let effects_grid = osu_data_normalized
-            .timings
+        let source = osu_data_normalized.timings;
+
+        let effects_grid = source
             .iter()
-            .filter(|t| !t.is_timing)
-            .map(|t| {
-                let effect_time = t.time;
-                let beat = time_to_beat(effect_time);
-                malody::Effect {
-                    beat: beat.to_vec(),
-                    scroll: -100f64 / t.val,
-                }
+            .enumerate()
+            .filter_map(|(idx, t)| {
+                let scroll = if t.is_timing {
+                    // 对于同时间的最后一根红线，如果同时间有绿线，使用绿线作为malody的effect
+                    // 如果没有绿线，则按照osu!规则变速会重置，需要在malody中添加一个scroll=1.0的effect
+                    if source.get(idx + 1).is_some_and(|next| next.time == t.time) {
+                        return None;
+                    }
+                    1.0
+                } else {
+                    -100.0 / t.val
+                };
+
+                Some(malody::Effect {
+                    beat: time_to_beat(t.time).to_vec(),
+                    scroll,
+                })
             })
             .collect::<Vec<_>>();
 
