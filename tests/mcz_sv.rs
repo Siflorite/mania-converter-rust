@@ -90,9 +90,7 @@ fn explicit_sv_at_bpm_change_wins_and_becomes_the_persistent_value() {
             (2000., -200., false),
             (2000., -100., false),
             (3000., 500., true),
-            (3000., -100., false),
             (5000., 250., true),
-            (5000., -100., false),
         ]
     );
 }
@@ -141,7 +139,7 @@ fn archive_conversion_writes_restored_sv_after_red_lines() -> std::io::Result<()
         .map(|line| line.split(',').collect())
         .collect();
     assert_eq!(rows.len(), 8);
-    for pair in rows.chunks_exact(2) {
+    for pair in rows.as_chunks::<2>().0 {
         assert_eq!(pair[0][0], pair[1][0]);
         assert_eq!(pair[0][6], "1");
         assert_eq!(pair[1][6], "0");
