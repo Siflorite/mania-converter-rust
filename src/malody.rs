@@ -404,15 +404,41 @@ impl McData {
         };
 
         let mut timings = [bpm_list.clone(), effect_list].concat();
+        // Stable sorting keeps red lines before effects at the same timestamp,
+        // and preserves authored order when multiple effects share a timestamp.
         timings.sort_by_key(|x| x.1);
-        osu_data.timings = timings
-            .iter()
-            .map(|&(_, time, scroll)| OsuTimingPoint {
+        let mut timings = timings.into_iter().peekable();
+        let mut current_effect = -100.0;
+        // Reserve for worst case: every BPM line needs an effect
+        let mut timings_amended = Vec::with_capacity(timings.len() + bpm_list.len());
+
+        while let Some((_, time, val)) = timings.next() {
+            let is_timing = val > 0.0;
+            timings_amended.push(OsuTimingPoint {
                 time: time as f64,
-                val: scroll,
-                is_timing: scroll > 0.0,
-            })
-            .collect();
+                val,
+                is_timing,
+            });
+
+            if !is_timing {
+                current_effect = val;
+                continue;
+            }
+
+            // Check if this is the last BPM line at current time point
+            let is_last_bpm_line = timings.peek().is_none_or(|next| next.1 != time);
+            if is_last_bpm_line && current_effect != -100.0 {
+                // osu! resets sv at uninherited timingpoint (red line), but malody retains scroll at BPM change.
+                // So we need to an explicit green line here for desired malody sv.
+                timings_amended.push(OsuTimingPoint {
+                    time: time as f64,
+                    val: current_effect,
+                    is_timing: false,
+                });
+            }
+        }
+
+        osu_data.timings = timings_amended;
 
         // 构建 HitObjects 部分
         let total_column = self.meta.mode_ext.column;
