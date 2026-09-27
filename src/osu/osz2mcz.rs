@@ -9,7 +9,7 @@ use crate::BeatMapInfo;
 use crate::malody::McData;
 use crate::misc::sanitize_filename;
 use crate::osu::OsuDataV128;
-use crate::zip_utils::{create_archive, extract_archive};
+use crate::zip_utils::{chart_formats, convert_mixed_archive, create_archive, extract_archive};
 
 /// Convert all .osz files under the given directory to .mcz files.
 /// "." or "" uses the run directory.
@@ -61,6 +61,12 @@ pub fn process_whole_dir_osz(dir: &str, b_calc_sr: bool, b_print_results: bool) 
 }
 
 /// Convert one .osz file, then call post_process before removing the temporary directory.
+///
+/// Archives containing .mc charts but no .osu charts are copied byte-for-byte to .mcz.
+/// In that case no charts are parsed or converted, and the callback receives empty
+/// beatmap information plus the extracted original files in the temporary directory.
+/// Mixed archives retain original .mc charts and all assets with their paths;
+/// beatmap information describes converted .osu charts only. Conversion errors propagate.
 pub fn process_osz_file_postprocess<F>(
     path: &Path,
     b_calc_sr: bool,
@@ -82,6 +88,11 @@ where
 }
 
 /// Convert one .osz file; return the generated .mcz path and beatmap information.
+///
+/// Archives containing only target-format charts are copied unchanged; the returned
+/// beatmap information is empty because no charts were parsed or converted.
+/// Mixed archives retain existing target charts and assets unchanged. Returned
+/// information describes converted charts only; a failed conversion returns an error.
 pub fn process_osz_file(path: &Path, b_calc_sr: bool) -> io::Result<(PathBuf, Vec<BeatMapInfo>)> {
     let mut beatmap_infos = Vec::new();
 
@@ -98,6 +109,30 @@ fn process_osz_core(
     temp_dir_path: &Path,
     b_calc_sr: bool,
 ) -> io::Result<(PathBuf, Vec<BeatMapInfo>)> {
+    let (has_osu, has_mc) = chart_formats(osz_path, "osu", "mc")?;
+    if !has_osu && has_mc {
+        // Keep postprocess access to extracted files, but never repack the output.
+        extract_archive(osz_path, temp_dir_path)?;
+        let output = osz_path.with_extension("mcz");
+        if output != osz_path {
+            std::fs::copy(osz_path, &output)?;
+        }
+        return Ok((output, Vec::new()));
+    }
+    if has_osu && has_mc {
+        return convert_mixed_archive(
+            osz_path,
+            temp_dir_path,
+            "osu",
+            "mc",
+            "mcz",
+            |source, target| {
+                let (_, info) = process_osu_file_self(source, target, true, b_calc_sr, |_| {})?;
+                Ok(info)
+            },
+        );
+    }
+
     let beatmap_data_vec: Arc<Mutex<Vec<BeatMapInfo>>> = Arc::new(Mutex::new(Vec::new()));
 
     let required_files: Arc<Mutex<HashSet<PathBuf>>> = Arc::new(Mutex::new(HashSet::new()));
@@ -118,18 +153,23 @@ fn process_osz_core(
             let entry_path = entry.path();
 
             if entry_path.extension() == Some(std::ffi::OsStr::new("osu")) {
-                let (mc_file_path, beatmap_info) =
-                    match process_osu_file_self(entry_path, b_calc_sr, add_files_to_required) {
-                        Ok(result) => result,
-                        Err(error) => {
-                            eprintln!(
-                                "Failed to convert .osu file {}: {}.",
-                                entry_path.display(),
-                                error
-                            );
-                            return;
-                        }
-                    };
+                let (mc_file_path, beatmap_info) = match process_osu_file_self(
+                    entry_path,
+                    &entry_path.with_extension("mc"),
+                    false,
+                    b_calc_sr,
+                    add_files_to_required,
+                ) {
+                    Ok(result) => result,
+                    Err(error) => {
+                        eprintln!(
+                            "Failed to convert .osu file {}: {}.",
+                            entry_path.display(),
+                            error
+                        );
+                        return;
+                    }
+                };
 
                 beatmap_data_vec.lock().unwrap().push(beatmap_info);
                 required_files.lock().unwrap().insert(mc_file_path);
@@ -152,6 +192,8 @@ fn process_osz_core(
 /// Convert one .osu file and report every asset referenced by the resulting .mc file.
 fn process_osu_file_self<F>(
     osu_file_path: &Path,
+    mc_path: &Path,
+    preserve_paths: bool,
     b_calc_sr: bool,
     callback: F,
 ) -> io::Result<(PathBuf, BeatMapInfo)>
@@ -177,6 +219,10 @@ where
     // Match zip_utils::extract_archive: keep the basename and sanitize it.
     let add_asset = |name: &mut String| {
         if name.is_empty() {
+            return;
+        }
+        if preserve_paths {
+            callback(&parent_path.join(&*name));
             return;
         }
 
@@ -212,9 +258,8 @@ where
 
     beatmap_info.bg_name = mc_data.meta.background.clone();
 
-    let mc_path = osu_file_path.with_extension("mc");
     println!("Generating .mc file at: {:?}", mc_path);
     mc_data.to_file(&mc_path.to_string_lossy())?;
 
-    Ok((mc_path, beatmap_info))
+    Ok((mc_path.to_path_buf(), beatmap_info))
 }

@@ -66,6 +66,21 @@ pub fn process(file_path: &str) -> io::Result<(PathBuf, Vec<BeatMapInfo>)> {
 }
 ```
 
+## Archive conversion behavior
+
+- An MCZ containing `.osu` charts and no `.mc` charts is copied unchanged to OSZ.
+  An OSZ containing `.mc` charts and no `.osu` charts is copied unchanged to MCZ.
+  The input is retained; no charts are parsed and the returned beatmap information is empty.
+- For mixed archives, source-format charts are converted and existing target-format
+  charts are retained byte-for-byte. All other files and their directory paths are
+  preserved, including audio, backgrounds, hitsounds, storyboards and videos.
+- If a generated chart name is occupied, the new chart receives a ` (converted N)`
+  suffix. Existing charts are never overwritten. A source-chart conversion failure
+  returns an error before replacing the output archive.
+- Mixed-archive beatmap information describes converted charts only. Postprocess
+  callbacks receive the extracted files and generated charts, with backgrounds in
+  beatmap information addressed relative to the temporary directory.
+
 ## Roadmap
 
 ### Finished
