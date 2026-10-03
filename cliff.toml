@@ -1,7 +1,9 @@
 # Release notes are generated from the previous version tag to the CI commit.
 # Non-conventional commits are retained so older history is not silently lost.
+# `header` is the title of CHANGELOG.md: `--prepend` strips it from the existing
+# file and writes the new release directly below it, instead of on top of it.
 [changelog]
-header = ""
+header = "# mania-converter changelog"
 body = """
 ## {{ version }}
 {% for group, commits in commits | group_by(attribute="group") %}
@@ -22,6 +24,7 @@ split_commits = false
 protect_breaking_commits = true
 commit_parsers = [
   { message = "^Merge", skip = true },
+  { message = "^bump", skip = true },
   { message = "^feat", group = "<!-- 0 -->Added" },
   { message = "^fix", group = "<!-- 1 -->Fixed" },
   { message = "^perf", group = "<!-- 2 -->Performance" },

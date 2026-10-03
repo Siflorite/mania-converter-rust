@@ -10,22 +10,19 @@ Licensed under [Apache-2.0](LICENSE). By contributing, you agree that your work 
 
 | Branch | Purpose | Receives PRs from |
 |---|---|---|
-| `main` | Stable trunk; always equals the latest released version | `develop/v_X_Y` (release PRs), `hotfix/*` |
-| `develop/v_X_Y` | Development branch for version `X.Y` (e.g. `develop/v_0_6`); disposable after release | `feature/*`, `fix/*`, `refactor/*`, `docs/*`, `chore/*`, forks |
-| `hotfix/*` | Emergency fixes for the latest release | — |
+| `main` | Integration trunk; not necessarily the latest released version | `feature/*`, `fix/*`, `refactor/*`, `docs/*`, `chore/*`, `hotfix/*`, forks |
+| `release/X.Y.Z` | Release candidate, cut from a tested `main` commit | Created by the maintainer; pushing it triggers the release workflow |
 
 ```
-main ────────────────────────────────●─── (tag v0.6.0, release)
-        ▲  release PR                 │
-develop/v_0_6 ──●──●──●───────────────┘ (archived after release)
-        ▲  daily PRs (squash)
-feature/xxx ──┘
+feature/xxx ──●──●──┐
+                    ├─ squash PR ─> main ──●── release/0.6.2 ──> tag v0.6.2
+hotfix/xxx  ──●─────┘
 ```
 
-- The default branch is `main`. New version branches are cut from `main`.
-- A version branch is **abandoned** once it is merged into `main`; the next version starts a fresh `develop/v_X_Y`.
-- Hotfixes go straight to `main`. If a hotfix also affects the branch under development, cherry-pick it there.
-- Tags `vX.Y.Z` are only ever placed on `main`.
+- The default branch is `main`. All development PRs target it.
+- `release/*` branches are not merged back. They exist to trigger publishing for one version.
+- Tags `vX.Y.Z` are placed on `main` history, at the released commit.
+- Branches named `develop/v_X_Y` are retired; the next version no longer opens one.
 
 ## 2. Development setup
 
@@ -41,18 +38,13 @@ cargo test  --workspace --all-features
 
 ## 3. How to contribute (everyone, maintainer included)
 
-1. Fork the repository (external contributors) or create a branch in the repository (maintainer), named `feature/...`, `fix/...`, `refactor/...`, `docs/...` or `chore/...` as appropriate.
-2. Commit using [Conventional Commits](https://www.conventionalcommits.org/): `feat:`, `fix:`, `refactor:`, `docs:`, `chore:`, `test:`, `perf:` … This feeds the automated changelog.
-3. Push and open a pull request to the correct target:
-   - day-to-day work → the current development branch (`develop/v_X_Y`);
-   - emergency fix for a released version → `main` (branch name `hotfix/...`).
+1. Fork the repository (external contributors) or create a branch in the repository (maintainer), named `feature/...`, `fix/...`, `refactor/...`, `docs/...`, `chore/...` or `hotfix/...` as appropriate.
+2. Commit using [Conventional Commits](https://www.conventionalcommits.org/): `feat:`, `fix:`, `refactor:`, `docs:`, `chore:`, `test:`, `perf:` … This feeds the automated changelog. Add a component scope such as `fix(lib):` or `feat(standalone):`, since one changelog covers the library and the bundled applications.
+3. Push and open a pull request against `main`, including emergency hotfixes.
 4. The CI bot automatically runs the quality gates (see §4) and AI review leaves comments on the PR.
 5. Address all failing checks and review comments, then merge.
 
-**There is no direct push to `main` or `develop/v_*` — branch protection rulesets apply to all roles, including the repository owner.** There is no human approval requirement (you cannot approve your own PR); the required status checks are the gate. Merging happens via the GitHub UI button:
-
-- everyday PRs → **squash merge**;
-- the release PR `develop/v_X_Y` → `main` → **merge commit**.
+**There is no direct push to `main` — branch protection rulesets apply to all roles, including the repository owner.** There is no human approval requirement (you cannot approve your own PR); the required status checks are the gate. Everyday PRs are merged with **squash merge**, and the source branch is deleted.
 
 ## 4. Quality gates (enforced by the CI bot)
 
@@ -91,17 +83,28 @@ The hook scripts live in `.cargo-husky/hooks/`. `cargo test` runs in CI (too slo
 - New functionality must come with tests; bug fixes should come with a regression test.
 - Put small, hand-made fixtures in `tests/fixtures/`. Do **not** commit large beatmap packs or media files (music, images) — keep the repository light.
 - Prefer round-trip tests (`osu → mc → osu`) and snapshot tests for serialization output.
-- Malformed-input and edge-case tests (timing, BOM/CRLF, zip path traversal) are especially valued.
+- Malformed-input and edge-case tests (timing, BOM/CRLF, zip path traversal) are valued.
 
 ## 7. Release process (automated)
 
-1. Set the root `Cargo.toml` package version to the next stable `X.Y.Z`, then open the release PR: `develop/v_X_Y` → `main`.
-2. Once `ci` succeeds on `main`, [`.github/workflows/release.yml`](.github/workflows/release.yml) generates the changelog with `git-cliff` (`cliff.toml`) and publishes the GitHub Release `vX.Y.Z`, using that changelog as the release notes.
-3. The release also carries Windows x64 builds of the CLI and the Webapp, named like the earlier releases:
-   - `mania-converter-standalone-vX.Y.Z.exe`
-   - `mania-converter-webapp-vX.Y.Z.exe`
-4. A version that already has a Release is skipped; bump the version to publish again.
-5. The merged version branch is archived; development of the next version starts from `main`.
+1. Run `bash ci/bump-lib X.Y.Z` on a clean tree. It creates the `bump/X.Y.Z` branch, writes the version into the root `Cargo.toml`, refreshes `Cargo.lock`, prepends the `git-cliff` changelog entry, and commits everything as `bump(lib): <old> -> <new>`. It refuses to run when the argument is not `X.Y.Z`, the tree is dirty, the version is unchanged, or the tag already exists. The changelog entry is never written by hand.
+2. Push that branch and open a PR to `main`. Merge it once `ci` passes. `CHANGELOG.md` and the version then agree on `main`, so there is nothing to sync afterwards.
+3. Cut `release/X.Y.Z` from that merged commit and push it. The branch version must match `Cargo.toml`; version `0.6.2` means the branch `release/0.6.2`. The branch carries no commits of its own.
+4. [`.github/workflows/release.yml`](.github/workflows/release.yml) runs the quality gates on the pushed commit and publishes the GitHub Release `vX.Y.Z`, using the `## vX.Y.Z` section of `CHANGELOG.md` as its notes. A missing, empty or duplicated section only reports that it is waiting.
+5. The same Release carries two Windows x64 executables built from that commit: `mania-converter-standalone-vX.Y.Z.exe` and `mania-converter-webapp-vX.Y.Z.exe`. A version that already has a tag or Release is kept as-is — a retry only re-attaches the executables — so bump the version again instead of reusing the branch. Nothing needs merging back: the release branch is a copy of `main` and may be deleted after publishing. crates.io publishing returns later.
+
+```sh
+# 1) version, lockfile and changelog together, through a PR to main
+bash ci/bump-lib 0.6.2
+git push -u origin bump/0.6.2
+
+# 2) after the PR is merged, release that commit
+git switch main && git pull --ff-only origin main
+git switch -c release/0.6.2
+git push -u origin release/0.6.2
+```
+
+`ci/bump-lib` needs a local `git-cliff` (`cargo install git-cliff --locked`) and calls `git commit`, so the pre-commit hook in §4 runs as usual.
 
 The repository must allow Actions to write contents (Settings → Actions → General → Workflow permissions).
 
@@ -123,22 +126,19 @@ Open an issue, or contact the maintainer.
 
 | 分支 | 用途 | 接受的 PR 来源 |
 |---|---|---|
-| `main` | 稳定主干；永远等于最新已发布版本 | `develop/v_X_Y`（发布 PR）、`hotfix/*` |
-| `develop/v_X_Y` | 版本 `X.Y` 的开发分支（如 `develop/v_0_6`）；发布后即废弃 | `feature/*`、`fix/*`、`refactor/*`、`docs/*`、`chore/*`、外部 fork |
-| `hotfix/*` | 对已发布版本的紧急修复 | — |
+| `main` | 集成主干；不要求等于最新已发布版本 | `feature/*`、`fix/*`、`refactor/*`、`docs/*`、`chore/*`、`hotfix/*`、外部 fork |
+| `release/X.Y.Z` | 发布候选分支，从已测试的 `main` 提交切出 | 维护者创建；推送即触发发布流程 |
 
 ```
-main ────────────────────────────────●─── (打 tag v0.6.0，发布)
-        ▲  发布 PR                    │
-develop/v_0_6 ──●──●──●───────────────┘ （发布后归档）
-        ▲  日常 PR（squash）
-feature/xxx ──┘
+feature/xxx ──●──●──┐
+                    ├─ squash PR ─> main ──●── release/0.6.2 ──> tag v0.6.2
+hotfix/xxx  ──●─────┘
 ```
 
-- 默认分支是 `main`，新版本分支从 `main` 切出。
-- 版本分支合入 `main` 后即**废弃**，下个版本重新开一条 `develop/v_X_Y`。
-- hotfix 直接进 `main`；若正在开发的版本分支也受该问题影响，请 cherry-pick 过去。
-- 标签 `vX.Y.Z` 只打在 `main` 上。
+- 默认分支是 `main`，所有开发 PR 都指向它。
+- `release/*` 分支不合并回主干，它的作用是触发某个版本的发布。
+- 标签 `vX.Y.Z` 打在 `main` 的历史提交上，即实际发布的那个提交。
+- `develop/v_X_Y` 分支已停用，下个版本不再新开。
 
 ## 2. 开发环境
 
@@ -154,18 +154,13 @@ cargo test  --workspace --all-features
 
 ## 3. 贡献流程（所有人适用，包括维护者）
 
-1. fork 本仓库（外部贡献者）或在仓库内新建分支（维护者），按用途命名：`feature/...`、`fix/...`、`refactor/...`、`docs/...`、`chore/...`。
-2. 按 [Conventional Commits](https://www.conventionalcommits.org/) 规范提交（`feat:`、`fix:`、`refactor:`、`docs:`、`chore:`、`test:`、`perf:` 等）。自动 changelog 依赖这一规范。
-3. push 并开 Pull Request，目标分支：
-   - 日常工作 → 当前开发分支（`develop/v_X_Y`）；
-   - 已发布版本的紧急修复 → `main`（分支名 `hotfix/...`）。
+1. fork 本仓库（外部贡献者）或在仓库内新建分支（维护者），按用途命名：`feature/...`、`fix/...`、`refactor/...`、`docs/...`、`chore/...`、`hotfix/...`。
+2. 按 [Conventional Commits](https://www.conventionalcommits.org/) 规范提交（`feat:`、`fix:`、`refactor:`、`docs:`、`chore:`、`test:`、`perf:` 等）。自动 changelog 依赖这一规范；请带上组件 scope（如 `fix(lib):`、`feat(standalone):`），因为一份 changelog 同时覆盖库和随附的应用。
+3. push 并向 `main` 开 Pull Request，紧急修复同样走 `main`。
 4. CI 机器人自动运行质量门禁（见第 4 节），AI 评审会在 PR 上留下评论。
 5. 修复所有不通过的检查和评审意见，然后合并。
 
-**禁止直接 push 到 `main` 或 `develop/v_*`——分支保护规则对所有角色生效，包括仓库 owner。** 本项目不设人工审批（你无法批准自己的 PR），必过的状态检查就是审核门禁。合并在 GitHub 网页上点击按钮完成：
-
-- 日常 PR → **squash merge**；
-- 发布 PR（`develop/v_X_Y` → `main`）→ **merge commit**。
+**禁止直接 push 到 `main`——分支保护规则对所有角色生效，包括仓库 owner。** 本项目不设人工审批（你无法批准自己的 PR），必过的状态检查就是审核门禁。日常 PR 使用 **squash merge**，合并后删除源分支。
 
 ## 4. 质量门禁（由 CI 机器人强制执行）
 
@@ -208,13 +203,24 @@ cargo doc --workspace --no-deps
 
 ## 7. 发布流程（全自动）
 
-1. 将根目录 `Cargo.toml` 的 package 版本改为下一稳定版 `X.Y.Z`，然后开发布 PR：`develop/v_X_Y` → `main`。
-2. `ci` 在 `main` 上通过后，[`.github/workflows/release.yml`](.github/workflows/release.yml) 用 `git-cliff`（`cliff.toml`）生成 changelog，并发布 GitHub Release `vX.Y.Z`，changelog 即发布说明。
-3. 发布同时附带 Windows x64 的 CLI 与 Webapp 构建，命名沿用之前的发布：
-   - `mania-converter-standalone-vX.Y.Z.exe`
-   - `mania-converter-webapp-vX.Y.Z.exe`
-4. 该版本的 Release 已存在时自动跳过；需要再次发布就先递增版本号。
-5. 已合并的版本分支归档；下一版本的开发从 `main` 重新开始。
+1. 在干净的工作区运行 `bash ci/bump-lib X.Y.Z`。它会创建 `bump/X.Y.Z` 分支，把版本号写入根目录 `Cargo.toml`，刷新 `Cargo.lock`，用 `git-cliff` 追加 changelog 条目，并以 `bump(lib): <旧> -> <新>` 提交。参数不是 `X.Y.Z`、工作区不干净、版本未变化或 tag 已存在时都会拒绝执行。changelog 条目不要手工编写。
+2. 推送该分支并向 `main` 开 PR，`ci` 通过后合并。此时 `CHANGELOG.md` 与版本号已经在 `main` 上一致，之后不需要任何同步。
+3. 从该合并提交切出 `release/X.Y.Z` 并推送。分支版本必须与 `Cargo.toml` 一致：版本 `0.6.2` 对应分支 `release/0.6.2`。该分支本身不含任何提交。
+4. [`.github/workflows/release.yml`](.github/workflows/release.yml) 对推送的提交运行质量门禁，并发布 GitHub Release `vX.Y.Z`，发布说明取 `CHANGELOG.md` 中的 `## vX.Y.Z` 小节。小节缺失、为空或重复时只提示正在等待。
+5. 同一个 Release 会附带由该提交构建的两个 Windows x64 可执行文件：`mania-converter-standalone-vX.Y.Z.exe` 和 `mania-converter-webapp-vX.Y.Z.exe`。该版本已有 tag 或 Release 时保持原样（重跑只会重新附上可执行文件），需要再次发布就递增版本号，而不是复用同一分支。不需要合并回主干——发布分支只是 `main` 的副本，发布完可以删除。crates.io 发布稍后再补。
+
+```sh
+# 1) 版本号、lockfile、changelog 一起走 PR 进 main
+bash ci/bump-lib 0.6.2
+git push -u origin bump/0.6.2
+
+# 2) PR 合并后，发布该提交
+git switch main && git pull --ff-only origin main
+git switch -c release/0.6.2
+git push -u origin release/0.6.2
+```
+
+`ci/bump-lib` 需要本地安装 `git-cliff`（`cargo install git-cliff --locked`），并且内部会执行 `git commit`，因此第 4 节的 pre-commit 钩子照常运行。
 
 仓库需允许 Actions 写入 contents（Settings → Actions → General → Workflow permissions）。
 
