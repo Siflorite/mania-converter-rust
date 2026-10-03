@@ -1,0 +1,9 @@
+# Test fixtures are data, not source code. GitHub Linguist maps the .mc
+# extension to the M4 macro language, so without these rules the language bar
+# reports about 1 MB of M4 against 156 KB of Rust for this repository.
+*.mc linguist-vendored
+tests/beatmaps/** linguist-vendored
+
+# Keep the release helper LF-only: it is invoked as `bash ci/bump-lib`, and a
+# CRLF checkout would make it depend on the shell's tolerance for CR.
+/ci/bump-lib text eol=lf
