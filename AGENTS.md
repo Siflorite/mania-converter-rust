@@ -13,6 +13,7 @@
 - `binaries/webapp`: Actix Web upload/conversion/download service, currently binding to `0.0.0.0:80`. `shuttle_main.rs` is an alternative entrypoint, not the default binary.
 - `svg/` and `font/`: runtime rendering assets, resolved relative to the working directory. Run rendering and its tests from the repository root.
 - `tests/`: integration tests for conversion, star ratings and rendering; existing fixtures are in `tests/beatmaps/`. Some tests generate files next to fixtures; inspect the diff after running tests.
+- `ci/bump-lib`: prepares one release on a `bump/X.Y.Z` branch — writes the version into the root `Cargo.toml`, refreshes `Cargo.lock`, prepends the git-cliff changelog entry and commits it as `bump(lib): <old> -> <new>`. It needs a local `git-cliff` and refuses to run on a dirty tree, an unchanged version or an existing tag.
 
 ## Development and validation
 
@@ -32,7 +33,8 @@ Run the CLI with `cargo run -p mania-converter-standalone`, or the web service w
 
 ## Change discipline
 
-- Read `CONTRIBUTING.md` for contribution policy. Use Conventional Commits and open daily-work PRs against `develop/v_0_6`; do not push directly to protected development or main branches.
+- Read `CONTRIBUTING.md` for contribution policy. Use Conventional Commits and open all development/fix PRs against `main`, normally squash merging and deleting the short-lived source branch. Do not push directly to main. Retire old develop branches only after preserving their work.
+- `.github/workflows/release.yml` runs on a push to `release/X.Y.Z`, which must be a copy of the merged `main` commit: it tests that commit, then builds the two Windows executables and creates the `vX.Y.Z` tag and GitHub Release from the `## vX.Y.Z` section of `CHANGELOG.md`. Prepare that commit with `bash ci/bump-lib X.Y.Z` and merge it through a PR first, keeping the `bump(lib): ...` subject so git-cliff skips it. A version with an existing tag or Release is never rewritten. Keep the required CI check name `fmt / clippy / test / doc` stable unless GitHub Rulesets are updated deliberately. Never enable workflows, change GitHub rules, publish, commit or push without explicit authorization.
 - Check `git status` before edits. Preserve unrelated work and keep commits scoped; use an isolated worktree when appropriate.
 - Follow existing formatting, document public APIs, and add meaningful regression tests for behavior changes. Keep fixtures small; put new hand-made fixtures in `tests/fixtures/`. Do not add large beatmap packs, generated cards or media without a specific need.
 - Preserve timing, long-note, hitsound, encoding and archive-path behavior when touching conversion. Keep optional star-rating calculation optional.

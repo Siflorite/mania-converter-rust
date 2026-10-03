@@ -1,134 +1,188 @@
 name: release
 
-# Runs after the "ci" workflow has finished, so merging the develop branch into
-# main publishes the release automatically. The "ci" workflow also runs for pull
-# requests - including fork pull requests, whose head branch can be named main -
-# so the build job below accepts only successful push runs from this repository.
+# Publish one release from a release branch.
+# Prepare the version, Cargo.lock and the changelog entry with
+#
+#   bash ci/bump-lib X.Y.Z
+#
+# merge that PR to main, then push `release/X.Y.Z` from the merged commit.
+# The `## vX.Y.Z` section of CHANGELOG.md is the release note; a push without a
+# nonempty section only reports that it is waiting.
+
 on:
-  workflow_run:
-    workflows: [ci]
-    types: [completed]
-    branches: [main]
+  push:
+    branches: ["release/**"]
 
 permissions:
   contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 env:
   CARGO_HUSKY_DONT_INSTALL_HOOKS: "true"
 
 jobs:
-  build:
-    name: Windows x64 executables
-    if: >-
-      github.event.workflow_run.event == 'push' &&
-      github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.head_branch == 'main' &&
-      github.event.workflow_run.head_repository.full_name == github.repository
-    runs-on: windows-latest
+  checks:
+    name: Release candidate checks
+    runs-on: ubuntu-latest
     outputs:
       tag: ${{ steps.meta.outputs.tag }}
-      sha: ${{ steps.meta.outputs.sha }}
-      publish: ${{ steps.meta.outputs.publish }}
+      ready: ${{ steps.meta.outputs.ready }}
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.workflow_run.head_sha }}
+          ref: ${{ github.sha }}
+          fetch-depth: 0
           persist-credentials: false
-      - name: Read the version from Cargo.toml
-        id: meta
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          $version = (cargo metadata --no-deps --format-version 1 | ConvertFrom-Json).packages |
-            Where-Object name -eq 'mania-converter' | Select-Object -ExpandProperty version
-          if (-not $version) { throw 'Cannot read the mania-converter version from Cargo.toml' }
-
-          $tag = "v$version"
-          "tag=$tag" >> $env:GITHUB_OUTPUT
-          "sha=$(git rev-parse HEAD)" >> $env:GITHUB_OUTPUT
-
-          # gh exits 1 when the release does not exist, which is the normal
-          # first-release case, so read the exit code instead of trusting output.
-          gh release view $tag --repo $env:GITHUB_REPOSITORY *> $null
-          if ($LASTEXITCODE -eq 0) {
-            Write-Host "$tag already has a release, skipping."
-            "publish=false" >> $env:GITHUB_OUTPUT
-          } else {
-            "publish=true" >> $env:GITHUB_OUTPUT
-          }
-
-          # The pwsh wrapper exits with $LASTEXITCODE; clear the expected non-zero.
-          exit 0
       - uses: dtolnay/rust-toolchain@stable
-        if: steps.meta.outputs.publish == 'true'
+        with:
+          components: rustfmt, clippy
+      - name: Validate candidate and read the changelog
+        id: meta
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! "$GITHUB_REF_NAME" =~ ^release/((0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*))$ ]]; then
+            echo '::error::Use release/X.Y.Z.'
+            exit 1
+          fi
+          version="${BASH_REMATCH[1]}"
+          actual="$(cargo metadata --locked --no-deps --format-version 1 | jq -er '.packages[] | select(.name == "mania-converter") | .version')"
+          if [[ "$version" != "$actual" ]]; then
+            echo "::error::Branch version $version does not match the package version $actual."
+            exit 1
+          fi
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+
+          echo "tag=v$version" >> "$GITHUB_OUTPUT"
+          echo 'ready=false' >> "$GITHUB_OUTPUT"
+
+          # Take the section verbatim: from its heading to the next level-two
+          # heading. Accept CRLF files.
+          status=0
+          awk -v heading="## v$version" '
+            { sub(/\r$/, "") }
+            $0 == heading { count++; selected = 1; next }
+            /^##[[:space:]]/ { selected = 0 }
+            selected { print; if ($0 ~ /[^[:space:]]/) nonempty = 1 }
+            END { if (count > 1) exit 2; if (!count || !nonempty) exit 3 }
+          ' CHANGELOG.md > "$RUNNER_TEMP/notes.md" || status=$?
+
+          if [[ $status -eq 0 ]]; then
+            echo 'ready=true' >> "$GITHUB_OUTPUT"
+          elif [[ $status -eq 3 ]]; then
+            echo "Waiting for a nonempty '## v$version' section in CHANGELOG.md; nothing was published." >> "$GITHUB_STEP_SUMMARY"
+            echo "Generate it with: git cliff --unreleased --tag v$version --prepend CHANGELOG.md" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::error::Cannot read the changelog (duplicate '## v$version' headings, or an unreadable CHANGELOG.md)."
+            exit 1
+          fi
+      - uses: Swatinem/rust-cache@v2
+        if: steps.meta.outputs.ready == 'true'
+      - name: cargo fmt
+        if: steps.meta.outputs.ready == 'true'
+        run: cargo fmt --all --check
+      - name: cargo clippy
+        if: steps.meta.outputs.ready == 'true'
+        run: cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
+      - name: cargo test
+        if: steps.meta.outputs.ready == 'true'
+        run: cargo test --locked --workspace --all-features
+      - name: cargo doc
+        if: steps.meta.outputs.ready == 'true'
+        run: cargo doc --locked --workspace --no-deps
+      - uses: actions/upload-artifact@v4
+        if: steps.meta.outputs.ready == 'true'
+        with:
+          name: release-notes
+          path: ${{ runner.temp }}/notes.md
+          if-no-files-found: error
+
+  executables:
+    name: Windows x64 executables
+    needs: checks
+    if: needs.checks.outputs.ready == 'true'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
         with:
           targets: x86_64-pc-windows-msvc
       - uses: Swatinem/rust-cache@v2
-        if: steps.meta.outputs.publish == 'true'
       - name: Build the CLI and the Webapp
-        if: steps.meta.outputs.publish == 'true'
         run: cargo build --locked --release --target x86_64-pc-windows-msvc -p mania-converter-standalone -p mania-converter-webapp
       - name: Name the executables like the earlier releases
-        if: steps.meta.outputs.publish == 'true'
         shell: pwsh
         env:
-          TAG: ${{ steps.meta.outputs.tag }}
+          TAG: ${{ needs.checks.outputs.tag }}
         run: |
           New-Item -ItemType Directory -Path dist -Force | Out-Null
           foreach ($name in 'mania-converter-standalone', 'mania-converter-webapp') {
-            Copy-Item "target/x86_64-pc-windows-msvc/release/$name.exe" "dist/$name-$env:TAG.exe"
+            $built = "target/x86_64-pc-windows-msvc/release/$name.exe"
+            if (-not (Test-Path $built)) { throw "Missing $built" }
+            Copy-Item $built "dist/$name-$env:TAG.exe"
           }
       - uses: actions/upload-artifact@v4
-        if: steps.meta.outputs.publish == 'true'
         with:
           name: windows-x64
           path: dist/*.exe
           if-no-files-found: error
 
   publish:
-    name: Changelog and GitHub Release
-    needs: build
-    if: needs.build.outputs.publish == 'true'
+    name: Tag and publish the release
+    needs: [checks, executables]
+    if: needs.checks.outputs.ready == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ needs.build.outputs.sha }}
+          ref: ${{ github.sha }}
           fetch-depth: 0
-          fetch-tags: true
           persist-credentials: false
-      - name: Generate the changelog since the previous tag
-        uses: orhun/git-cliff-action@v4
+      - uses: actions/download-artifact@v4
         with:
-          version: v2.14.2
-          config: cliff.toml
-          args: --unreleased --tag ${{ needs.build.outputs.tag }} --output CHANGELOG.md
+          name: release-notes
+          path: ${{ runner.temp }}
       - uses: actions/download-artifact@v4
         with:
           name: windows-x64
           path: dist
-      - name: Fail if the version tag already points at another commit
-        env:
-          TAG: ${{ needs.build.outputs.tag }}
-          SHA: ${{ needs.build.outputs.sha }}
-        run: |
-          existing="$(git rev-parse --verify --quiet "refs/tags/$TAG^{commit}" || true)"
-          if [ -n "$existing" ] && [ "$existing" != "$SHA" ]; then
-            echo "::error::Tag $TAG points to $existing, but this run builds $SHA. Bump the version in Cargo.toml instead of reusing the tag."
-            exit 1
-          fi
-      - name: Publish the release with the changelog as its notes
+      - name: Create the release at the tested commit
+        shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ needs.build.outputs.tag }}
-          SHA: ${{ needs.build.outputs.sha }}
+          TAG: ${{ needs.checks.outputs.tag }}
         run: |
+          set -euo pipefail
+          existing="$(git rev-parse --verify --quiet "refs/tags/$TAG^{commit}" || true)"
+          if [[ -n "$existing" && "$existing" != "$GITHUB_SHA" ]]; then
+            echo "::error::Tag $TAG points at $existing, not the tested commit. Bump the version instead of moving a published tag."
+            exit 1
+          fi
+
+          # Listing releases must succeed; network or auth errors are not "absent".
+          release_url="$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases" \
+            --jq ".[] | select(.tag_name == \"$TAG\") | .html_url")"
+          if [[ -n "$release_url" ]]; then
+            # Same version and same commit: this is a retry, so only make sure
+            # the executables are attached instead of recreating the release.
+            test "$existing" = "$GITHUB_SHA"
+            echo "Release already exists: $release_url"
+            gh release upload "$TAG" dist/*.exe --repo "$GITHUB_REPOSITORY" --clobber
+            exit 0
+          fi
+
           gh release create "$TAG" \
             --repo "$GITHUB_REPOSITORY" \
-            --target "$SHA" \
+            --target "$GITHUB_SHA" \
             --title "$TAG" \
-            --notes-file CHANGELOG.md \
+            --notes-file "$RUNNER_TEMP/notes.md" \
+            --latest=false \
             dist/*.exe
