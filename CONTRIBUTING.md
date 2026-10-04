@@ -76,7 +76,7 @@ The hook scripts live in `.cargo-husky/hooks/`. `cargo test` runs in CI (too slo
 
 - `cargo fmt` output is the only accepted formatting; clippy warnings are errors.
 - This project is primarily a **library**: every public item should have a doc comment, and `///` examples are compiled as doctests — keep them valid.
-- Error handling: the library uses `thiserror` error types on its public API; `anyhow` belongs to binaries only.
+- Error handling: the public API uses `std::io::Result`; this repository declares no `anyhow` dependency.
 
 ## 6. Testing guidelines
 
@@ -192,7 +192,7 @@ cargo doc --workspace --no-deps
 
 - 唯一接受的格式是 `cargo fmt` 的输出；clippy 警告视为错误。
 - 本项目主要作为**库**使用：所有公共条目都应写文档注释，`///` 中的示例会作为 doctest 编译执行，请保持其正确。
-- 错误处理：库的公共 API 使用 `thiserror` 定义的错误类型；`anyhow` 只用于 binaries。
+- 错误处理：公共 API 使用 `std::io::Result`；本仓库不声明 `anyhow` 依赖。
 
 ## 6. 测试规范
 

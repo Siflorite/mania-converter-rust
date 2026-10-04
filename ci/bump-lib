@@ -51,8 +51,8 @@ if git rev-parse --verify --quiet "refs/tags/$tag" >/dev/null; then
     exit 1
 fi
 
-# The root manifest is the only one that carries the library version: the first
-# "version = ..." line in the file is the [package] one.
+# The root manifest holds the single version line that every crate inherits
+# ([workspace.package]); it is the first "version = ..." assignment in the file.
 current="$(awk -F'"' '/^version = / { print $2; exit }' Cargo.toml)"
 if [ -z "$current" ]; then
     echo "Cannot read the package version from Cargo.toml." >&2
@@ -66,13 +66,19 @@ fi
 branch="bump/$new_version"
 git switch -c "$branch"
 
-# 1) version, first "version = ..." line after [package]. Line endings of the
-#    rest of the file are preserved as they are.
-awk -v v="$new_version" '
-    /^\[package\]/ { in_package = 1 }
-    in_package && !done && /^version = "/ { sub(/"[^"]*"/, "\"" v "\""); done = 1 }
+# 1) version, wherever it is declared: every crate inherits the first
+#    "version = ..." assignment in this file. Line endings of the rest of the
+#    file are preserved as they are.
+if ! awk -v v="$new_version" '
+    !done && /^version = "/ { sub(/"[^"]*"/, "\"" v "\""); done = 1 }
     { print }
+    END { exit done ? 0 : 1 }
 ' Cargo.toml > Cargo.toml.bump
+then
+    rm -f Cargo.toml.bump
+    echo "Cannot find a 'version = \"...\"' line to update in Cargo.toml." >&2
+    exit 1
+fi
 mv Cargo.toml.bump Cargo.toml
 
 # 2) lockfile. The release workflow uses --locked, so a stale lock fails it.

@@ -1,6 +1,6 @@
 use actix_files::NamedFile;
 use actix_multipart::Multipart;
-use actix_web::{get, post, web, App, HttpRequest, HttpResponse, HttpServer, Responder};
+use actix_web::{App, HttpRequest, HttpResponse, HttpServer, Responder, get, post, web};
 use futures_util::stream::StreamExt as _;
 use lazy_static::lazy_static;
 use std::collections::HashMap;
@@ -172,10 +172,10 @@ pub async fn download_osz(filename: web::Path<String>, req: HttpRequest) -> impl
 
                 // 删除对应的 .mcz 文件
                 let original_file_path = file_path_clone.with_extension("mcz");
-                if original_file_path.exists() {
-                    if let Err(e) = fs::remove_file(&original_file_path) {
-                        eprintln!("Error deleting .mcz file: {}", e);
-                    }
+                if original_file_path.exists()
+                    && let Err(e) = fs::remove_file(&original_file_path)
+                {
+                    eprintln!("Error deleting .mcz file: {}", e);
                 }
             });
 
