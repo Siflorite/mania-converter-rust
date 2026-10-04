@@ -2,7 +2,7 @@
 
 ## Purpose and layout
 
-`mania-converter` is a Rust library for Malody and osu!mania beatmaps, with a standalone CLI and an Actix Web upload service. The root crate is version 0.6.0, edition 2024; the two binary crates use edition 2021 and have independent versions. Use the current stable Rust toolchain with rustfmt and Clippy.
+`mania-converter` is a Rust library for Malody and osu!mania beatmaps, with a standalone CLI and an Actix Web upload service. The workspace root is the library crate (edition 2024); the two binary crates inherit the same version and edition from `[workspace.package]`. Use the current stable Rust toolchain with rustfmt and Clippy.
 
 - `src/lib.rs`: public modules and shared `BeatMapInfo`; crate documentation includes `README.md`.
 - `src/malody.rs`: serde MC data model, beat arithmetic, MC parsing/writing and conversion to osu data. `src/malody/mcz2osz.rs` handles MCZ archive conversion and batch processing.
@@ -10,7 +10,7 @@
 - `src/misc.rs`: shared internal helpers, including filename handling.
 - `src/graphx.rs` and `src/graphx/info_generation.rs`: beatmap information cards, using Handlebars SVG templates and resvg rendering.
 - `binaries/standalone`: interactive CLI for MCZ conversion or OSZ info cards in the working directory.
-- `binaries/webapp`: Actix Web upload/conversion/download service, currently binding to `0.0.0.0:80`. `shuttle_main.rs` is an alternative entrypoint, not the default binary.
+- `binaries/webapp`: Actix Web upload/conversion/download service, currently binding to `0.0.0.0:80`.
 - `svg/` and `font/`: runtime rendering assets, resolved relative to the working directory. Run rendering and its tests from the repository root.
 - `tests/`: integration tests for conversion, star ratings and rendering; existing fixtures are in `tests/beatmaps/`. Some tests generate files next to fixtures; inspect the diff after running tests.
 - `ci/bump-lib`: prepares one release on a `bump/X.Y.Z` branch — writes the version into the root `Cargo.toml`, refreshes `Cargo.lock`, prepends the git-cliff changelog entry and commits it as `bump(lib): <old> -> <new>`. It needs a local `git-cliff` and refuses to run on a dirty tree, an unchanged version or an existing tag.
@@ -38,5 +38,5 @@ Run the CLI with `cargo run -p mania-converter-standalone`, or the web service w
 - Check `git status` before edits. Preserve unrelated work and keep commits scoped; use an isolated worktree when appropriate.
 - Follow existing formatting, document public APIs, and add meaningful regression tests for behavior changes. Keep fixtures small; put new hand-made fixtures in `tests/fixtures/`. Do not add large beatmap packs, generated cards or media without a specific need.
 - Preserve timing, long-note, hitsound, encoding and archive-path behavior when touching conversion. Keep optional star-rating calculation optional.
-- Inspect actual signatures, manifests and workflow files: parts of README/CONTRIBUTING describe older APIs or intended future automation. Current library APIs largely return `std::io::Result`; `anyhow` is also present in the root dependencies, despite the contribution guide's aspirational error-type policy. Do not introduce an unrelated API/error-type migration.
+- Inspect actual signatures, manifests and workflow files: parts of README/CONTRIBUTING describe older APIs or intended future automation. Current library APIs return `std::io::Result`, and the workspace declares no `anyhow` dependency. Do not introduce an unrelated API/error-type migration.
 - Do not assume OSZ-to-MCZ archive conversion or release automation is complete merely because it appears in a roadmap or documentation.

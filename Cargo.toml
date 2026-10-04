@@ -1,13 +1,17 @@
 [package]
 name = "mania-converter"
-version = "0.6.1"
+version.workspace = true
 authors = ["Siflorite <monokhrom@163.com>"]
-edition = "2024"
+edition.workspace = true
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [workspace]
 members = ["binaries/webapp", "binaries/standalone"]
+
+[workspace.package]
+version = "0.6.1"
+edition = "2024"
 
 [dependencies]
 walkdir = "2.5"
@@ -19,7 +23,6 @@ rayon = "1"
 # For picture generation
 handlebars = "6"
 resvg = "0.48"
-anyhow = "1.0.100"
 
 [dev-dependencies]
 cargo-husky = { version = "1.5", features = ["user-hooks"] }
